@@ -1,33 +1,30 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from database import get_db
+import uuid
 
-from database_models import User
-from database import engine
-from database_models import Base
-
-Base.metadata.create_all(bind=engine)
-from auth_utils import (
+from ..database import get_db
+from ..models.user import User
+from ..auth.auth_utils import (
     hash_password,
     verify_password,
     create_access_token,
     verify_access_token,
 )
 
-app = FastAPI()
+router = APIRouter()
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
-
-
-
-
-@app.post("/register")
+# ======================
+# Register
+# ======================
+@router.post("/register")
 def register(email: str, password: str, db: Session = Depends(get_db)):
 
     existing_user = db.query(User).filter(User.email == email).first()
+
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
@@ -35,7 +32,7 @@ def register(email: str, password: str, db: Session = Depends(get_db)):
 
     new_user = User(
         email=email,
-        hashed_password=hashed_pw
+        password_hash=hashed_pw
     )
 
     db.add(new_user)
@@ -45,37 +42,40 @@ def register(email: str, password: str, db: Session = Depends(get_db)):
     return {"message": "User registered successfully"}
 
 
-
-
-@app.post("/login")
-def login(form_data: OAuth2PasswordRequestForm = Depends(),
-          db: Session = Depends(get_db)):
+# ======================
+# Login
+# ======================
+@router.post("/login")
+def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db)
+):
 
     user = db.query(User).filter(User.email == form_data.username).first()
 
-    if not user:
-        raise HTTPException(status_code=400, detail="Invalid credentials")
-
-    if not verify_password(form_data.password, user.hashed_password):
+    if not user or not verify_password(form_data.password, user.password_hash):
         raise HTTPException(status_code=400, detail="Invalid credentials")
 
     access_token = create_access_token(
-        data={"user_id": user.id}
+        data={"user_id": str(user.id)}
     )
 
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-
-
-@app.get("/profile")
-def get_profile(token: str = Depends(oauth2_scheme),
-                db: Session = Depends(get_db)):
+# ======================
+# Profile
+# ======================
+@router.get("/profile")
+def get_profile(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
 
     payload = verify_access_token(token)
     user_id = payload.get("user_id")
 
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == uuid.UUID(user_id)).first()
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
