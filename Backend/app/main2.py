@@ -1,21 +1,19 @@
 from fastapi import FastAPI
+from app.database import engine, Base
+from app.models import User, Report, ReportMedia, RescueUpdate, RiskZone, ReportEmbedding, report_media
+from app.routes import auth, admin, reports, media
 
-from .routes.auth import router
-from .database import engine, Base
-from .auth.auth_utils import hash_password
-from .models import User, Report, ReportMedia, RescueUpdate, Vote, RiskZone, ReportEmbedding
-from app.routes import reports, auth
-
-#Automatically table create garxa model use garera
+# Create all tables
 Base.metadata.create_all(bind=engine)
 
-app2 = FastAPI()
+app2 = FastAPI(title="DISASTER360 API")
+
 
 @app2.get("/")
 def home():
     return {"message": "DISASTER360 Backend Running"}
 
-app2.include_router(router, prefix="/auth")
-
-app2.include_router(auth.router, prefix="/auth")
+app2.include_router(auth.router)
+app2.include_router(admin.router)
 app2.include_router(reports.router)
+app2.include_router(media.router)

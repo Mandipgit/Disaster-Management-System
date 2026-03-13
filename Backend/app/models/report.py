@@ -15,6 +15,5 @@ class Report(Base):
     longitude = Column(Float)
     severity = Column(String)
     status = Column(String, default="Pending")
-    verified_votes = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
