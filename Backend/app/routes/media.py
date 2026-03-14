@@ -8,7 +8,7 @@ from ..database import get_db
 from ..models.report import Report
 from ..models.report_media import ReportMedia
 from ..models.user import User
-from .auth import get_current_user  # ✅ import, never rewrite
+from .auth import get_current_user  
 
 router = APIRouter(prefix="/media", tags=["Media"])
 
