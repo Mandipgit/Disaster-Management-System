@@ -1,13 +1,98 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from typing import Optional
 
 from ..database import get_db
 from ..models.report import Report
 from ..models.user import User
-from .auth import get_current_admin  
-from pydantic import BaseModel
+from .auth import get_current_admin
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+
+
+# ======================
+# Pydantic Schemas
+# ======================
+class StatusUpdateRequest(BaseModel):
+    status: str
+
+
+class ReportUpdateRequest(BaseModel):
+    disaster_type: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    severity: Optional[str] = None
+
+
+# ======================
+# Get All Reports (approved admin only)
+# Fixed path — must stay above /reports/{report_id}
+# ======================
+@router.get("/reports")
+def get_all_reports(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    reports = db.query(Report).all()
+    result = []
+    for r in reports:
+        result.append({
+            "id": r.id,
+            "user_id": r.user_id,
+            "disaster_type": r.disaster_type,
+            "title": r.title,
+            "description": r.description,
+            "latitude": r.latitude,
+            "longitude": r.longitude,
+            "severity": r.severity,
+            "status": r.status,
+            "created_at": r.created_at,
+            "updated_at": r.updated_at
+        })
+    return {"total": len(result), "reports": result}
+
+
+# ======================
+# Update Any Report (approved admin only)
+# Must stay above /reports/{report_id}/verify and /reports/{report_id}/status
+# ======================
+@router.put("/reports/{report_id}")
+def admin_update_report(
+    report_id: int,
+    payload: ReportUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    report = db.query(Report).filter(Report.id == report_id).first()
+
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    # Only update fields that were actually sent
+    if payload.disaster_type is not None:
+        report.disaster_type = payload.disaster_type
+    if payload.title is not None:
+        report.title = payload.title
+    if payload.description is not None:
+        report.description = payload.description
+    if payload.latitude is not None:
+        report.latitude = payload.latitude
+    if payload.longitude is not None:
+        report.longitude = payload.longitude
+    if payload.severity is not None:
+        report.severity = payload.severity
+
+    db.commit()
+    db.refresh(report)
+
+    return {
+        "message": "Report updated successfully",
+        "report_id": report.id,
+        "updated_by": current_user.email
+    }
 
 
 # ======================
@@ -27,32 +112,28 @@ def verify_report(
     db.commit()
     db.refresh(report)
 
-    return {"message": f"Report {report_id} verified successfully by {current_user.email}"}
+    return {
+        "message": f"Report {report_id} verified successfully",
+        "verified_by": current_user.email
+    }
 
 
-
-# ======================
-# Pydantic Schema for status update
-# ======================
-class StatusUpdateRequest(BaseModel):
-    status: str
 # ======================
 # Update Report Status (approved admin only)
 # ======================
 @router.put("/reports/{report_id}/status")
 def update_report_status(
     report_id: int,
-    payload: StatusUpdateRequest,          
+    payload: StatusUpdateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin)  
+    current_user: User = Depends(get_current_admin)
 ):
-    # Allowed status values
     allowed_status = [
         "Pending",
         "Verified",
-        "Rescue In Progress",
-        "Controlled",
-        "Closed"
+        "Verified Rescue In Progress",
+        "Verified Controlled",
+        "Verified and Closed"
     ]
 
     if payload.status not in allowed_status:
@@ -76,13 +157,25 @@ def update_report_status(
         "updated_by": current_user.email
     }
 
+
 # ======================
-# Get All Reports (approved admin only)
+# Delete Any Report (approved admin only)
 # ======================
-@router.get("/reports")
-def get_all_reports(
+@router.delete("/reports/{report_id}")
+def admin_delete_report(
+    report_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin)
 ):
-    reports = db.query(Report).all()
-    return {"total": len(reports), "reports": reports}
+    report = db.query(Report).filter(Report.id == report_id).first()
+
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    db.delete(report)
+    db.commit()
+
+    return {
+        "message": f"Report {report_id} deleted successfully",
+        "deleted_by": current_user.email
+    }
