@@ -1,22 +1,79 @@
-# Python cache
+# ===============================
+# Python / FastAPI
+# ===============================
+
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+*.py[cod]
+*.so
 
-# Virtual environments
+# Virtual Environment
 venv/
 env/
-disenv/
+.venv/
+Backend/disenv/
 
-# Environment variables
+# Environment Variables
 .env
+.env.*
 
-# Uploaded media files
+# Python packaging
+build/
+dist/
+*.egg-info/
+
+# ===============================
+# Database
+# ===============================
+
+*.db
+*.sqlite3
+
+# ===============================
+# Uploads / Media
+# ===============================
+
 Backend/Uploads/
+Uploads/
 
-# VS Code settings
+# ===============================
+# Logs
+# ===============================
+
+*.log
+
+# ===============================
+# VS Code / IDE
+# ===============================
+
 .vscode/
+.idea/
 
-# OS files
+# ===============================
+# Operating System Files
+# ===============================
+
 .DS_Store
 Thumbs.db
+
+# ===============================
+# Flutter
+# ===============================
+
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+
+# ===============================
+# Misc
+# ===============================
+
+coverage/
+*.cover
+*.pid
+*.seed
