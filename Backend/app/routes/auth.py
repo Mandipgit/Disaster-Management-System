@@ -22,8 +22,11 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 # Helper: safely cast is_admin to bool
 # ==============================
 def is_admin_approved(user: User) -> bool:
-    # Handles both actual Boolean and accidental string "false"/"true"
     return str(user.is_admin).lower() == "true"
+
+def is_rescue_approved(user: User) -> bool:
+    return str(user.is_rescueteam).lower() == "true"
+
 
 
 # ======================
@@ -45,14 +48,15 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    if payload.role.lower() not in ["citizen", "admin"]:
-        raise HTTPException(status_code=400, detail="Role must be 'citizen' or 'admin'")
+    if payload.role.lower() not in ["citizen", "admin", "rescue"]:
+        raise HTTPException(status_code=400, detail="Role must be 'citizen', 'admin', or 'rescue'")
 
     new_user = User(
         email=payload.email,
         password_hash=hash_password(payload.password),
         role=payload.role.lower(),
-        is_admin=False  # always False on registration, no exceptions
+        is_admin=False,  # always False on registration, no exceptions
+        is_rescueteam=False
     )
 
     db.add(new_user)
@@ -61,6 +65,8 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
 
     if payload.role.lower() == "admin":
         message = "Admin registered successfully. You cannot login until manually approved in the database."
+    elif payload.role.lower() == "rescue":
+        message = "Rescue Team registered successfully. You cannot login until manually approved by Admin."
     else:
         message = "Citizen registered successfully. You can now login."
 
@@ -88,6 +94,11 @@ def login(
         raise HTTPException(
             status_code=403,
             detail="Admin account pending approval. Contact system administrator."
+        )
+    if user.role == "rescue" and not is_rescue_approved(user):
+        raise HTTPException(
+            status_code=403,
+            detail="Rescue Team account pending approval. Contact system administrator."
         )
 
     access_token = create_access_token(
@@ -118,7 +129,8 @@ def get_profile(
         "id": user.id,
         "email": user.email,
         "role": user.role,
-        "is_admin": user.is_admin
+        "is_admin": user.is_admin,
+        "is_rescueteam": user.is_rescueteam
     }
 
 
@@ -166,6 +178,30 @@ def get_current_admin(
         raise HTTPException(
             status_code=403,
             detail="Admin access has been revoked. Contact system administrator."
+        )
+
+    return user
+# ======================
+# Dependency: approved rescue team only
+# ======================
+def get_current_rescue_team(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+) -> User:
+    payload = verify_access_token(token)
+
+    if payload.get("role") != "rescue":
+        raise HTTPException(status_code=403, detail="Rescue Team access required")
+
+    user = db.query(User).filter(User.id == uuid.UUID(payload.get("user_id"))).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not is_rescue_approved(user):
+        raise HTTPException(
+            status_code=403,
+            detail="Rescue Team access has been revoked. Contact system administrator."
         )
 
     return user

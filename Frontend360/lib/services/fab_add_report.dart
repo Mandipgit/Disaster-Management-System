@@ -1,0 +1,991 @@
+import 'package:disaster360/colors.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:disaster360/providers/report_provider.dart';
+import 'package:disaster360/services/api_service.dart';
+import 'package:flutter/services.dart';
+
+class ReportDisasterScreen extends StatefulWidget {
+  const ReportDisasterScreen({super.key});
+
+  @override
+  State<ReportDisasterScreen> createState() => _ReportDisasterScreenState();
+}
+
+class _ReportDisasterScreenState extends State<ReportDisasterScreen> {
+  // ── Form state ─────────────────────────────────────────────────────────────
+  String _selectedType = 'Flood';
+  int _severityLevel = 0; // 0 = not selected
+  final TextEditingController _titleCtrl = TextEditingController();
+  final TextEditingController _descCtrl = TextEditingController();
+  final List<String> _uploadedPhotos = []; // Simulated file paths
+  bool _isSubmitting = false;
+
+  final List<String> _disasterTypes = [
+    'Flood',
+    'Landslide',
+    'Fire',
+    'Road Blockage',
+    'Earthquake',
+  ];
+
+  // Severity metadata
+  static const List<_SeverityMeta> _severityLevels = [
+    _SeverityMeta(
+      level: 1,
+      label: 'Low',
+      description: 'Minor incident, no immediate danger to life or property.',
+      color: Color(0xFF4CAF50),
+    ),
+    _SeverityMeta(
+      level: 2,
+      label: 'Moderate',
+      description: 'Some risk present. Caution advised in the affected area.',
+      color: Color(0xFF8BC34A),
+    ),
+    _SeverityMeta(
+      level: 3,
+      label: 'High',
+      description: 'Significant danger. Evacuation or immediate action needed.',
+      color: Color(0xFFFFB800),
+    ),
+    _SeverityMeta(
+      level: 4,
+      label: 'Severe',
+      description: 'Major disaster. Multiple areas affected, lives at risk.',
+      color: Color(0xFFFF6B2B),
+    ),
+    _SeverityMeta(
+      level: 5,
+      label: 'Extreme',
+      description:
+          'Catastrophic event. Maximum emergency response required immediately.',
+      color: Color(0xFFFF3B3B),
+    ),
+  ];
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _descCtrl.dispose();
+    super.dispose();
+  }
+
+  // ── Validate & submit ──────────────────────────────────────────────────────
+  Future<void> _submit() async {
+    if (_titleCtrl.text.trim().isEmpty) {
+      _snack('Please enter a title for the report.');
+      return;
+    }
+    if (_severityLevel == 0) {
+      _snack('Please select a severity level.');
+      return;
+    }
+    if (_descCtrl.text.trim().isEmpty) {
+      _snack('Please describe the situation.');
+      return;
+    }
+    if (_uploadedPhotos.length < 2) {
+      _snack('Please upload at least 2 photos as evidence.');
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+    
+    try {
+      final api = ApiService();
+      String severityStr = "Low";
+      if (_severityLevel == 1) severityStr = "Medium";
+      if (_severityLevel == 2) severityStr = "High";
+      if (_severityLevel == 3) severityStr = "Critical";
+
+                      final response = await api.post('/reports/', body: {
+        "disaster_type": _selectedType,
+        "title": _titleCtrl.text,
+        "description": _descCtrl.text,
+        "latitude": 27.7172, // TODO: Replace with real GPS lat
+        "longitude": 85.3240, // TODO: Replace with real GPS lng
+        "severity": severityStr,
+      });
+
+      final reportId = response['report_id'];
+
+      // Upload photos if any
+      for (String path in _uploadedPhotos) {
+         try {
+           await api.multipartPost('/media/upload/$reportId', path);
+         } catch (e) {
+           debugPrint("Media upload failed for $path: $e");
+         }
+      }
+
+      if (mounted) {
+        context.read<ReportProvider>().fetchReports(); // Refresh Feed
+      }
+      
+      setState(() => _isSubmitting = false);
+
+      if (!mounted) return;
+      _showSuccessDialog();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error submitting report: $e')),
+        );
+      }
+    }
+  }
+
+  void _snack(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          msg,
+          style: const TextStyle(color: Colors.white, fontSize: 13),
+        ),
+        backgroundColor: AppColors.bgSurface,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
+  void _simulatePhotoUpload() {
+    if (_uploadedPhotos.length >= 5) {
+      _snack('Maximum 5 photos allowed.');
+      return;
+    }
+    setState(() {
+      _uploadedPhotos.add('photo_${_uploadedPhotos.length + 1}.jpg');
+    });
+  }
+
+  void _removePhoto(int index) {
+    setState(() => _uploadedPhotos.removeAt(index));
+  }
+
+  void _showSuccessDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (_) => AlertDialog(
+            backgroundColor: AppColors.bgSurface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 8),
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withOpacity(0.15),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: AppColors.success.withOpacity(0.4),
+                      width: 2,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.check_rounded,
+                    color: AppColors.success,
+                    size: 36,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Report Submitted!',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Your report has been submitted and will be reviewed by authorities.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontSize: 13,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context); // close dialog
+                      Navigator.pop(context); // close report screen
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.orange,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Done',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bgPrimary,
+      appBar: _buildAppBar(context),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 1 ── Disaster type
+            _sectionLabel('DISASTER TYPE'),
+            const SizedBox(height: 12),
+            _buildTypeSelector(),
+            const SizedBox(height: 24),
+
+            // 2 ── Title
+            _sectionLabel('TITLE'),
+            const SizedBox(height: 12),
+            _buildTitleField(),
+            const SizedBox(height: 24),
+
+            // 3 ── Severity level
+            _sectionLabel('SEVERITY LEVEL'),
+            const SizedBox(height: 12),
+            _buildSeveritySlider(),
+            const SizedBox(height: 24),
+
+            // 4 ── Description
+            _sectionLabel('DESCRIPTION'),
+            const SizedBox(height: 12),
+            _buildDescriptionField(),
+            const SizedBox(height: 24),
+
+            // 5 ── GPS location
+            _sectionLabel('GPS LOCATION'),
+            const SizedBox(height: 12),
+            _buildGpsCard(),
+            const SizedBox(height: 24),
+
+            // 6 ── Photo evidence
+            _sectionLabel('PHOTO EVIDENCE'),
+            const SizedBox(height: 4),
+            Text(
+              'Min 2, max 5 photos/videos',
+              style: TextStyle(color: Colors.white38, fontSize: 11),
+            ),
+            const SizedBox(height: 12),
+            _buildPhotoEvidence(),
+            const SizedBox(height: 32),
+
+            // 7 ── Duplicate report detection (placeholder)
+            _buildDuplicateDetectionCard(),
+            const SizedBox(height: 24),
+
+            // 8 ── Submit
+            _buildSubmitButton(),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── App bar ────────────────────────────────────────────────────────────────
+  PreferredSizeWidget _buildAppBar(BuildContext context) {
+    return AppBar(
+      backgroundColor: AppColors.bgPrimary,
+      elevation: 0,
+      titleSpacing: 0,
+      systemOverlayStyle: SystemUiOverlayStyle.light,
+      leading: GestureDetector(
+        onTap: () => Navigator.pop(context),
+        child: const Icon(Icons.chevron_left, color: Colors.white, size: 28),
+      ),
+      title: const Text(
+        'Report Disaster',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.w800,
+          fontFamily: 'monospace',
+        ),
+      ),
+    );
+  }
+
+  // ── Section label ──────────────────────────────────────────────────────────
+  Widget _sectionLabel(String text) {
+    return Text(
+      text,
+      style: const TextStyle(
+        color: Colors.white38,
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 1.5,
+      ),
+    );
+  }
+
+  // ── 1. Disaster type chips ─────────────────────────────────────────────────
+  Widget _buildTypeSelector() {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children:
+          _disasterTypes.map((type) {
+            final isSelected = _selectedType == type;
+            return GestureDetector(
+              onTap: () => setState(() => _selectedType = type),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 9,
+                ),
+                decoration: BoxDecoration(
+                  color: isSelected ? AppColors.orange : AppColors.bgSurface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isSelected ? AppColors.orange : AppColors.border,
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  type,
+                  style: TextStyle(
+                    color: isSelected ? Colors.white : Colors.white54,
+                    fontSize: 13,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+    );
+  }
+
+  // ── 2. Title field ─────────────────────────────────────────────────────────
+  Widget _buildTitleField() {
+    return TextField(
+      controller: _titleCtrl,
+      style: const TextStyle(color: Colors.white, fontSize: 14),
+      decoration: InputDecoration(
+        hintText: 'e.g. Flooding near Koshi bridge',
+        hintStyle: const TextStyle(color: Colors.white24, fontSize: 13),
+        filled: true,
+        fillColor: AppColors.bgSurface,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.orange, width: 1.5),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
+      ),
+    );
+  }
+
+  // ── 3. Severity slider ─────────────────────────────────────────────────────
+  Widget _buildSeveritySlider() {
+    final selected =
+        _severityLevel > 0 ? _severityLevels[_severityLevel - 1] : null;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.bgSurface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Level pills — RIGHT to LEFT (5 on left, 1 on right per spec)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(5, (i) {
+              // i=0 → level 5 (extreme), i=4 → level 1 (low)
+              final level = 5 - i;
+              final meta = _severityLevels[level - 1];
+              final isSelected = _severityLevel == level;
+
+              return GestureDetector(
+                onTap: () => setState(() => _severityLevel = level),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: 52,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color:
+                        isSelected
+                            ? meta.color.withOpacity(0.20)
+                            : AppColors.bgDark,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: isSelected ? meta.color : AppColors.border,
+                      width: isSelected ? 1.5 : 1,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        '$level',
+                        style: TextStyle(
+                          color: isSelected ? meta.color : Colors.white38,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      // Volume bar — more filled = higher severity
+                      const SizedBox(height: 2),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(level, (_) {
+                          return Container(
+                            width: 4,
+                            height: 4,
+                            margin: const EdgeInsets.symmetric(horizontal: 1),
+                            decoration: BoxDecoration(
+                              color: isSelected ? meta.color : Colors.white24,
+                              shape: BoxShape.circle,
+                            ),
+                          );
+                        }),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ),
+
+          // Label strip (5→1 right-to-left)
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(5, (i) {
+              final level = 5 - i;
+              final meta = _severityLevels[level - 1];
+              final isSelected = _severityLevel == level;
+              return SizedBox(
+                width: 52,
+                child: Text(
+                  meta.label,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: isSelected ? meta.color : Colors.white24,
+                    fontSize: 9,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              );
+            }),
+          ),
+
+          // Description of selected level
+          if (selected != null) ...[
+            const SizedBox(height: 14),
+            const Divider(height: 1, color: AppColors.border),
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: selected.color.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: selected.color.withOpacity(0.4),
+                      width: 1,
+                    ),
+                  ),
+                  child: Text(
+                    'Level ${selected.level} · ${selected.label}',
+                    style: TextStyle(
+                      color: selected.color,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              selected.description,
+              style: const TextStyle(
+                color: Colors.white54,
+                fontSize: 12,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ── 4. Description field ───────────────────────────────────────────────────
+  Widget _buildDescriptionField() {
+    return TextField(
+      controller: _descCtrl,
+      maxLines: 4,
+      style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.5),
+      decoration: InputDecoration(
+        hintText: 'Describe the situation...',
+        hintStyle: const TextStyle(color: Colors.white24, fontSize: 13),
+        filled: true,
+        fillColor: AppColors.bgSurface,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.orange, width: 1.5),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
+      ),
+    );
+  }
+
+  // ── 5. GPS card ────────────────────────────────────────────────────────────
+  Widget _buildGpsCard() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppColors.success.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.success.withOpacity(0.3), width: 1),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.location_on, color: AppColors.success, size: 18),
+          const SizedBox(width: 10),
+          const Text(
+            '26.8065°N, 87.2846°E',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              fontFamily: 'monospace',
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            decoration: BoxDecoration(
+              color: AppColors.success.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Text(
+              'Auto-detected',
+              style: TextStyle(
+                color: AppColors.success,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── 6. Photo evidence ──────────────────────────────────────────────────────
+  Widget _buildPhotoEvidence() {
+    return Column(
+      children: [
+        // Uploaded thumbnails grid
+        if (_uploadedPhotos.isNotEmpty) ...[
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _uploadedPhotos.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 1,
+            ),
+            itemBuilder: (context, i) {
+              return Stack(
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.bgSurface,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.image_outlined,
+                        color: Colors.white38,
+                        size: 32,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: GestureDetector(
+                      onTap: () => _removePhoto(i),
+                      child: Container(
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          color: AppColors.danger,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.close,
+                          color: Colors.white,
+                          size: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: 6,
+                    left: 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        'Photo ${i + 1}',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 9,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+        ],
+
+        // Upload button
+        if (_uploadedPhotos.length < 5)
+          GestureDetector(
+            onTap: _simulatePhotoUpload,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              decoration: BoxDecoration(
+                color: AppColors.bgSurface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppColors.border,
+                  width: 1,
+                  style: BorderStyle.solid,
+                ),
+              ),
+              child: Column(
+                children: [
+                  const Icon(
+                    Icons.camera_alt_outlined,
+                    color: Colors.white38,
+                    size: 28,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Tap to upload photo/video',
+                    style: TextStyle(color: Colors.white38, fontSize: 13),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${_uploadedPhotos.length}/5 uploaded · min 2 required',
+                    style: TextStyle(
+                      color:
+                          _uploadedPhotos.length < 2
+                              ? AppColors.warning.withOpacity(0.8)
+                              : Colors.white24,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+        // Photo count indicator
+        if (_uploadedPhotos.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(
+                _uploadedPhotos.length >= 2
+                    ? Icons.check_circle_outline
+                    : Icons.info_outline,
+                color:
+                    _uploadedPhotos.length >= 2
+                        ? AppColors.success
+                        : AppColors.warning,
+                size: 14,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                _uploadedPhotos.length >= 2
+                    ? '${_uploadedPhotos.length} photo(s) ready'
+                    : 'Need ${2 - _uploadedPhotos.length} more photo(s)',
+                style: TextStyle(
+                  color:
+                      _uploadedPhotos.length >= 2
+                          ? AppColors.success
+                          : AppColors.warning,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  // ── 7. Report Duplicate Detection ─────────────────────────────────────────────────────
+  Widget _buildDuplicateDetectionCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.bgSurface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border, width: 0.8),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Header row ──────────────────────────────────────────────────────
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withAlpha(26),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.manage_search_rounded,
+                  color: AppColors.warning,
+                  size: 17,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'DUPLICATE DETECTION',
+                    style: TextStyle(
+                      color: AppColors.warning,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.2,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Powered by backend similarity check',
+                    style: TextStyle(
+                      color: Colors.white.withAlpha(100),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              // Status badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withAlpha(26),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: AppColors.warning.withAlpha(80),
+                    width: 0.8,
+                  ),
+                ),
+                child: const Text(
+                  'PENDING',
+                  style: TextStyle(
+                    color: AppColors.warning,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+          const Divider(color: AppColors.border, height: 1),
+          const SizedBox(height: 12),
+
+          // ── Check items ─────────────────────────────────────────────────────
+          ...[
+            'Checking nearby reports all over the app...',
+            'Matching disaster type & severity level...',
+            'Comparing report timestamps (±2 hr window)...',
+          ].map(
+            (label) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.bgPrimary,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(80),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      label,
+                      style: TextStyle(
+                        color: Colors.white.withAlpha(130),
+                        fontSize: 12.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 4),
+
+          // ── Footer note ─────────────────────────────────────────────────────
+          Center(
+            child: Text(
+              'This check runs automatically on submit — no action needed',
+              style: TextStyle(color: Colors.white.withAlpha(70), fontSize: 11),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── 8. Submit button ───────────────────────────────────────────────────────
+  Widget _buildSubmitButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: _isSubmitting ? null : _submit,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.danger,
+          disabledBackgroundColor: AppColors.danger.withOpacity(0.4),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          elevation: 0,
+        ),
+        child:
+            _isSubmitting
+                ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+                : const Text(
+                  'Submit Report',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+      ),
+    );
+  }
+}
+
+// ─── Severity metadata model ──────────────────────────────────────────────────
+
+class _SeverityMeta {
+  final int level;
+  final String label;
+  final String description;
+  final Color color;
+
+  const _SeverityMeta({
+    required this.level,
+    required this.label,
+    required this.description,
+    required this.color,
+  });
+}

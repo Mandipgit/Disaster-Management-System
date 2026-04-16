@@ -1,6 +1,7 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
-from app.models import User, Report, ReportMedia, RescueUpdate, RiskZone, ReportEmbedding, report_media
+from app.models import User, Report, ReportMedia, RescueUpdate, RiskZone, ReportEmbedding, report_media, ReportReaction
 from app.routes import auth, admin, reports, media
 
 # Create all tables
@@ -8,6 +9,14 @@ Base.metadata.create_all(bind=engine)
 
 app2 = FastAPI(title="DISASTER360 API")
 
+# Setup CORS
+app2.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Adjust this in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app2.get("/")
 def home():

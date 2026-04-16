@@ -5,3 +5,5 @@ from .report_media import ReportMedia
 from .rescue_update import RescueUpdate
 from .risk_zone import RiskZone
 from .report_embedding import ReportEmbedding
+from .report_reaction import ReportReaction
+

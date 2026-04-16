@@ -179,3 +179,37 @@ def admin_delete_report(
         "message": f"Report {report_id} deleted successfully",
         "deleted_by": current_user.email
     }
+# ======================
+# User Management Endpoints
+# ======================
+
+@router.get("/users")
+def get_users(
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_admin)
+):
+    users = db.query(User).all()
+    return [{"id": str(u.id), "full_name": u.full_name, "email": u.email, "phone": u.phone, 
+             "role": u.role, "is_admin": u.is_admin, "is_rescueteam": u.is_rescueteam,
+             "created_at": u.created_at} for u in users]
+
+
+@router.put("/users/{user_id}/status")
+def update_user_status(
+    user_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_admin)
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    if "is_admin" in payload:
+        user.is_admin = payload["is_admin"]
+    if "is_rescueteam" in payload:
+        user.is_rescueteam = payload["is_rescueteam"]
+        
+    db.commit()
+    db.refresh(user)
+    return {"message": "User status updated", "is_admin": user.is_admin, "is_rescueteam": user.is_rescueteam}

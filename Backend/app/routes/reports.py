@@ -8,20 +8,43 @@ from ..database import get_db
 from ..models.report import Report
 from ..models.user import User
 from .auth import get_current_user
+from sentence_transformers import SentenceTransformer
+from ..models.report_embedding import ReportEmbedding
+
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
+model = SentenceTransformer('all-mpnet-base-v2')
+
+
+def get_embedding(text: str) -> list[float]:
+    return model.encode(text).tolist()
 
 
 # ======================
-# Pydantic Schema
+# Pydantic Schemas
 # ======================
+class ReportCreateRequest(BaseModel):
+    disaster_type: str
+    title: str
+    description: str
+    location: Optional[str] = None
+    latitude: float
+    longitude: float
+    severity: str
+
 class ReportUpdateRequest(BaseModel):
     disaster_type: Optional[str] = None
     title: Optional[str] = None
     description: Optional[str] = None
+    location: Optional[str] = None      
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     severity: Optional[str] = None
+
+
+class DuplicateCheckRequest(BaseModel):
+    title: str
+    description: str
 
 
 # ======================
@@ -46,30 +69,82 @@ def calculate_distance(lat1, lon1, lat2, lon2):
 # ======================
 @router.post("/")
 def create_report(
-    disaster_type: str,
-    title: str,
-    description: str,
-    latitude: float,
-    longitude: float,
-    severity: str,
+    payload: ReportCreateRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    THRESHOLD = 0.82
+
+    # Step 1: Convert new report text to vector
+    embedding = get_embedding(f"{payload.title}. {payload.description}")
+
+    # Step 2: Check if a similar report already exists
+    closest = (
+        db.query(
+            ReportEmbedding,
+            (1 - ReportEmbedding.embedding_vector.cosine_distance(embedding)).label("similarity")
+        )
+        .filter(ReportEmbedding.embedding_vector.isnot(None))
+        .order_by(ReportEmbedding.embedding_vector.cosine_distance(embedding))
+        .first()
+    )
+
+    # Step 3: If duplicate found, merge into existing report
+    if closest is not None:
+        report_embedding, similarity = closest
+        similarity = float(similarity)
+
+        if similarity >= THRESHOLD:
+            # Find the existing report
+            existing_report = db.query(Report).filter(
+                Report.id == report_embedding.report_id
+            ).first()
+
+            if existing_report:
+                # Increment sources count
+                existing_report.sources = (existing_report.sources or 1) + 1 # pyright: ignore[reportAttributeAccessIssue]
+                db.commit()
+                db.refresh(existing_report)
+
+                return {
+                    "message": f"Your report matched an existing report and has been merged.",
+                    "merged": True,
+                    "matched_report_id": existing_report.id,
+                    "matched_report_title": existing_report.title,
+                    "similarity_score": round(similarity, 4),
+                    "sources": existing_report.sources
+                }
+
+    # Step 4: No duplicate found — save as a brand new report
     new_report = Report(
         user_id=current_user.id,
-        disaster_type=disaster_type,
-        title=title,
-        description=description,
-        latitude=latitude,
-        longitude=longitude,
-        severity=severity
+        disaster_type=payload.disaster_type,
+        title=payload.title,
+        description=payload.description,
+        location=payload.location,             
+        latitude=payload.latitude,
+        longitude=payload.longitude,
+        severity=payload.severity,
+        sources=1
     )
     db.add(new_report)
     db.commit()
     db.refresh(new_report)
 
-    return {"message": "Report created successfully", "report_id": new_report.id}
+ # Step 5: Save its embedding
+    report_embedding = ReportEmbedding(
+        report_id=new_report.id,
+        embedding_vector=embedding
+    )
+    db.add(report_embedding)
+    db.commit()
 
+    return {
+        "message": "New report created successfully",
+        "merged": False,
+        "report_id": new_report.id,
+        "sources": 1
+    }
 
 # ======================
 # Get All Reports (public)
@@ -85,12 +160,14 @@ def get_reports(db: Session = Depends(get_db)):
             "disaster_type": r.disaster_type,
             "title": r.title,
             "description": r.description,
+            "location": r.location,    
             "latitude": r.latitude,
             "longitude": r.longitude,
             "severity": r.severity,
             "status": r.status,
             "created_at": r.created_at,
-            "updated_at": r.updated_at
+            "updated_at": r.updated_at,
+            "sources": r.sources 
         })
     return result
 
@@ -113,19 +190,21 @@ def get_verified_reports(db: Session = Depends(get_db)):
             "disaster_type": r.disaster_type,
             "title": r.title,
             "description": r.description,
+            "location": r.location,      
             "latitude": r.latitude,
             "longitude": r.longitude,
             "severity": r.severity,
             "status": r.status,
             "created_at": r.created_at,
-            "updated_at": r.updated_at
+            "updated_at": r.updated_at,
+            "sources": r.sources 
         })
     return result
 
-# ======================
-# Get own reports
-# ======================
 
+# ======================
+# Get My Reports (logged-in user's own reports)
+# ======================
 @router.get("/my-reports", response_model=List[dict])
 def get_my_reports(
     db: Session = Depends(get_db),
@@ -143,18 +222,20 @@ def get_my_reports(
             "disaster_type": r.disaster_type,
             "title": r.title,
             "description": r.description,
+            "location": r.location,    
             "latitude": r.latitude,
             "longitude": r.longitude,
             "severity": r.severity,
             "status": r.status,
             "created_at": r.created_at,
-            "updated_at": r.updated_at
+            "updated_at": r.updated_at,
+            "sources": r.sources 
         })
-
     return result
 
+
 # ======================
-# Get Nearby Verified Reports (public)
+# Get Nearby Reports (public) — all statuses
 # ======================
 @router.get("/nearby", response_model=List[dict])
 def get_nearby_reports(
@@ -163,7 +244,6 @@ def get_nearby_reports(
     radius: float = 5.0,
     db: Session = Depends(get_db)
 ):
-    #Fetch ALL reports regardless of status
     all_reports = db.query(Report).all()
 
     if not all_reports:
@@ -179,13 +259,15 @@ def get_nearby_reports(
                 "disaster_type": r.disaster_type,
                 "title": r.title,
                 "description": r.description,
+                "location": r.location,   
                 "latitude": r.latitude,
                 "longitude": r.longitude,
                 "severity": r.severity,
-                "status": r.status,  # shows actual status of each report
+                "status": r.status,
                 "distance_km": round(distance, 2),
                 "created_at": r.created_at,
-                "updated_at": r.updated_at
+                "updated_at": r.updated_at,
+            "sources": r.sources 
             })
 
     if not nearby:
@@ -194,10 +276,54 @@ def get_nearby_reports(
             detail=f"No reports found within {radius} km"
         )
 
-    # Sort by closest first
     nearby.sort(key=lambda x: x["distance_km"])
-
     return nearby
+
+
+# ======================
+# Check Duplicate Report
+# ======================
+@router.post("/check-duplicate")
+def check_duplicate(
+    payload: DuplicateCheckRequest,
+    db: Session = Depends(get_db)
+):
+    embedding = get_embedding(f"{payload.title}. {payload.description}")
+
+    closest = (
+        db.query(
+            ReportEmbedding,
+            (1 - ReportEmbedding.embedding_vector.cosine_distance(embedding)).label("similarity")
+        ).filter(ReportEmbedding.embedding_vector.isnot(None))
+        .order_by(ReportEmbedding.embedding_vector.cosine_distance(embedding))
+        .first()
+    )
+
+    if closest is None:
+        return {"is_duplicate": False, "similarity_score": 0.0}
+
+    report_embedding, similarity = closest
+    similarity = float(similarity)
+    THRESHOLD = 0.82
+
+    if similarity >= THRESHOLD:
+        matched_report = db.query(Report).filter(
+            Report.id == report_embedding.report_id
+        ).first()
+        return {
+            "is_duplicate": True,
+            "similarity_score": round(similarity, 4),
+            "matched_report_id": matched_report.id if matched_report else None,
+            "matched_report_title": matched_report.title if matched_report else None
+        }
+
+    return {
+        "is_duplicate": False,
+        "similarity_score": round(similarity, 4),
+        "matched_report_id": None,
+        "matched_report_title": None
+    }
+
 
 # ======================
 # Edit Own Report (citizen only)
@@ -214,25 +340,26 @@ def update_report(
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
 
-    # Citizens can only edit their own reports
-    if report.user_id != current_user.id:
+    if report.user_id != current_user.id:  # pyright: ignore[reportGeneralTypeIssues]
         raise HTTPException(
             status_code=403,
             detail="You can only edit your own reports"
         )
 
     if payload.disaster_type is not None:
-        report.disaster_type = payload.disaster_type
+        setattr(report, "disaster_type", payload.disaster_type)
     if payload.title is not None:
-        report.title = payload.title
+        setattr(report, "title", payload.title)
     if payload.description is not None:
-        report.description = payload.description
+        setattr(report, "description", payload.description)
+    if payload.location is not None:          
+        setattr(report, "location", payload.location)
     if payload.latitude is not None:
-        report.latitude = payload.latitude
+        setattr(report, "latitude", payload.latitude)
     if payload.longitude is not None:
-        report.longitude = payload.longitude
+        setattr(report, "longitude", payload.longitude)
     if payload.severity is not None:
-        report.severity = payload.severity
+        setattr(report, "severity", payload.severity)
 
     db.commit()
     db.refresh(report)
@@ -258,8 +385,7 @@ def delete_own_report(
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
 
-    # Citizens can only delete their own reports
-    if report.user_id != current_user.id:
+    if report.user_id != current_user.id:  # pyright: ignore[reportGeneralTypeIssues]
         raise HTTPException(
             status_code=403,
             detail="You can only delete your own reports"
@@ -286,10 +412,13 @@ def get_report(report_id: int, db: Session = Depends(get_db)):
         "disaster_type": report.disaster_type,
         "title": report.title,
         "description": report.description,
+        "location": report.location,          
         "latitude": report.latitude,
         "longitude": report.longitude,
         "severity": report.severity,
         "status": report.status,
         "created_at": report.created_at,
-        "updated_at": report.updated_at
+        "updated_at": report.updated_at,
+            "sources": report.sources 
     }
+  
