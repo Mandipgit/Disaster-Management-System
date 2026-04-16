@@ -84,18 +84,18 @@ def login(
     # OAuth2PasswordRequestForm sends email in the "username" field in Swagger
     user = db.query(User).filter(User.email == form_data.username).first()
 
-    if not user or not verify_password(form_data.password, user.password_hash):
+    if not user or not verify_password(form_data.password, user.password_hash): # type: ignore
         raise HTTPException(status_code=400, detail="Invalid credentials")
 
     # ✅ Citizen → always allowed
     # ✅ Admin not approved → strictly blocked
     # ✅ Admin approved → allowed
-    if user.role == "admin" and not is_admin_approved(user):
+    if user.role == "admin" and not is_admin_approved(user): # type: ignore
         raise HTTPException(
             status_code=403,
             detail="Admin account pending approval. Contact system administrator."
         )
-    if user.role == "rescue" and not is_rescue_approved(user):
+    if user.role == "rescue" and not is_rescue_approved(user): # type: ignore
         raise HTTPException(
             status_code=403,
             detail="Rescue Team account pending approval. Contact system administrator."
@@ -148,7 +148,7 @@ def get_current_user(
         raise HTTPException(status_code=404, detail="User not found")
 
     # ✅ Double safety — blocks admin if revoked in DB after token was issued
-    if user.role == "admin" and not is_admin_approved(user):
+    if user.role == "admin" and not is_admin_approved(user): # type: ignore
         raise HTTPException(
             status_code=403,
             detail="Admin access has been revoked. Contact system administrator."

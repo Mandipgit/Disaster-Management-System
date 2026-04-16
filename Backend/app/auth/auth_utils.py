@@ -28,7 +28,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 # ==============================
 # JWT Token Creation
 # ==============================
-def create_access_token(data: dict, expires_delta: timedelta = None):
+def create_access_token(data: dict, expires_delta: timedelta = None): # type: ignore
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
@@ -45,8 +45,8 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
 def verify_access_token(token: str):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: str = payload.get("user_id")
-        role: str = payload.get("role")
+        user_id: str = payload.get("user_id") # type: ignore
+        role: str = payload.get("role") # type: ignore
 
         if user_id is None or role is None:
             raise HTTPException(

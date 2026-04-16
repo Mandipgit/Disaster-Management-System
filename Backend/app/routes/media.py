@@ -29,7 +29,7 @@ def upload_media(
         raise HTTPException(status_code=404, detail="Report not found")
 
     # Only report owner or approved admin can upload media
-    if report.user_id != current_user.id and current_user.role != "admin":
+    if report.user_id != current_user.id and current_user.role != "admin": # type: ignore
         raise HTTPException(
             status_code=403,
             detail="Not authorized to upload media for this report"
