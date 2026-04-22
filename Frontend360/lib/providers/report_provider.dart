@@ -14,6 +14,7 @@ class ReportModel {
   int likes;
   int dislikes;
   final String createdAt;
+  final List<dynamic> submissions;
 
   ReportModel({
     required this.id,
@@ -28,6 +29,7 @@ class ReportModel {
     required this.likes,
     required this.dislikes,
     required this.createdAt,
+    this.submissions = const [],
   });
 
   factory ReportModel.fromJson(Map<String, dynamic> json) {
@@ -44,6 +46,7 @@ class ReportModel {
       likes: json['likes'] ?? 0,
       dislikes: json['dislikes'] ?? 0,
       createdAt: json['created_at'] ?? '',
+      submissions: json['submissions'] ?? [],
     );
   }
 }

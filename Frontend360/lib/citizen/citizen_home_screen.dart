@@ -153,6 +153,14 @@ class _CitizenHomeScreenState extends State<CitizenHomeScreen> {
     'Flood',
     'Earthquake'
   ];
+
+  String _selectedSortOption = 'Date';
+  final List<String> _sortOptions = [
+    'Date',
+    'Severity',
+    'Most Reported'
+  ];
+
   int _activeNav = 0;
 
   @override
@@ -207,7 +215,7 @@ class _CitizenHomeScreenState extends State<CitizenHomeScreen> {
                   children: [
                     _buildStatCards(),
                     const SizedBox(height: 28),
-                    _buildFilterButton(context),
+                    _buildFilterAndSortButtons(context),
                     _buildReportCardsSection(context),
                   ],
                 ),
@@ -330,42 +338,158 @@ class _CitizenHomeScreenState extends State<CitizenHomeScreen> {
   }
 
 
-  Widget _buildFilterButton(BuildContext context) {
-    return GestureDetector(
-      onTap: () => _showFilterBottomSheet(context),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 20),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: AppColors.bgSurface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withOpacity(0.08)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.filter_list_rounded, color: AppColors.orange, size: 20),
-                const SizedBox(width: 10),
-                const Text(
-                  'Filter: ',
-                  style: TextStyle(color: Colors.white54, fontSize: 14),
+  Widget _buildFilterAndSortButtons(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => _showFilterBottomSheet(context),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.bgSurface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white.withOpacity(0.08)),
                 ),
-                Text(
-                  _selectedHomeFilter,
-                  style: const TextStyle(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.filter_list_rounded, color: AppColors.orange, size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          _selectedHomeFilter,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                    const Icon(Icons.keyboard_arrow_down, color: Colors.white54, size: 18),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => _showSortBottomSheet(context),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.bgSurface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white.withOpacity(0.08)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          const Icon(Icons.sort_rounded, color: AppColors.orange, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _selectedSortOption,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.keyboard_arrow_down, color: Colors.white54, size: 18),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSortBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.bgDark,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      isScrollControlled: true,
+      builder: (BuildContext ctx) {
+        return Container(
+          padding: const EdgeInsets.only(top: 16, bottom: 24, left: 20, right: 20),
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.5),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Sort By',
+                  style: TextStyle(
                     color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-              ],
-            ),
-            const Icon(Icons.keyboard_arrow_down, color: Colors.white54, size: 20),
-          ],
-        ),
-      ),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: _sortOptions.length,
+                  separatorBuilder: (_, __) => const Divider(color: Colors.white12, height: 1),
+                  itemBuilder: (ctx, index) {
+                    final option = _sortOptions[index];
+                    final isSelected = option == _selectedSortOption;
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        option,
+                        style: TextStyle(
+                          color: isSelected ? AppColors.orange : Colors.white70,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          fontSize: 15,
+                        ),
+                      ),
+                      trailing: isSelected
+                          ? const Icon(Icons.check_circle, color: AppColors.orange, size: 22)
+                          : null,
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        setState(() => _selectedSortOption = option);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -445,32 +569,62 @@ class _CitizenHomeScreenState extends State<CitizenHomeScreen> {
 
   List<ReportModel> _getFilteredReports(BuildContext context) {
     final all = context.watch<ReportProvider>().reports;
-    if (_selectedHomeFilter == 'All') return all;
-    
-    if (_selectedHomeFilter == 'My Reports') {
+    List<ReportModel> filtered = [];
+
+    if (_selectedHomeFilter == 'All') {
+      filtered = List.from(all);
+    } else if (_selectedHomeFilter == 'My Reports') {
       final auth = context.read<AuthProvider>();
-      return all.where((r) => r.userId == auth.user?.id).toList();
-    }
-    
-    // Status filters
-    if (['Pending', 'On Rescue', 'Verified'].contains(_selectedHomeFilter)) {
+      filtered = all.where((r) => r.userId == auth.user?.id).toList();
+    } else if (['Pending', 'On Rescue', 'Verified'].contains(_selectedHomeFilter)) {
       if (_selectedHomeFilter == 'On Rescue') {
-         return all.where((r) => r.status.toLowerCase().contains('progress')).toList();
+         filtered = all.where((r) => r.status.toLowerCase().contains('progress')).toList();
+      } else {
+         filtered = all.where((r) => r.status == _selectedHomeFilter).toList();
       }
-      return all.where((r) => r.status == _selectedHomeFilter).toList();
+    } else {
+      // Type filters
+      filtered = all.where((r) => r.disasterType == _selectedHomeFilter).toList();
     }
-    
-    // Type filters
-    return all.where((r) => r.disasterType == _selectedHomeFilter).toList();
+
+    // Sort rules
+    if (_selectedSortOption == 'Severity') {
+      filtered.sort((a, b) => _getSeverityScore(b.severity).compareTo(_getSeverityScore(a.severity)));
+    } else if (_selectedSortOption == 'Most Reported') {
+      filtered.sort((a, b) => b.submissions.length.compareTo(a.submissions.length));
+    } else {
+      // Default: Date (Recent to oldest)
+      filtered.sort((a, b) {
+        DateTime dateA = DateTime.tryParse(a.createdAt) ?? DateTime.fromMillisecondsSinceEpoch(0);
+        DateTime dateB = DateTime.tryParse(b.createdAt) ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return dateB.compareTo(dateA); 
+      });
+    }
+
+    return filtered;
+  }
+
+  int _getSeverityScore(String severity) {
+    switch (severity.toLowerCase()) {
+      case 'critical': return 4;
+      case 'high': return 3;
+      case 'medium': return 2;
+      case 'low': return 1;
+      default: return 0;
+    }
   }
 
   Widget _buildReportCardsSection(BuildContext context) {
+    final reports = _getFilteredReports(context);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'RECENT REPORTS',
-          style: TextStyle(
+        Text(
+          _selectedSortOption == 'Most Reported'
+              ? 'HOT REPORTS'
+              : 'RECENT REPORTS',
+          style: const TextStyle(
             color: Colors.white38,
             fontSize: 11,
             fontWeight: FontWeight.w600,
@@ -479,11 +633,11 @@ class _CitizenHomeScreenState extends State<CitizenHomeScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        ..._getFilteredReports(context).map((report) {
+        ...reports.map((report) {
           return _ReportCard(
             key: ValueKey(report.id.toString()),
             report: report,
-            animationDelay: Duration(milliseconds: 60 * _getFilteredReports(context).indexOf(report)),
+            animationDelay: Duration(milliseconds: 60 * reports.indexOf(report)),
             onUpvote: () => context.read<ReportProvider>().reactToReport(report.id, 'LIKE'),
             onDownvote: () => context.read<ReportProvider>().reactToReport(report.id, 'DISLIKE'),
           );
@@ -872,6 +1026,7 @@ class _ReportCard extends StatefulWidget {
 class _ReportCardWidgetState extends State<_ReportCard>
     with SingleTickerProviderStateMixin {
   bool _hovering = false;
+  bool _isExpanded = false;
   late AnimationController _entryCtrl;
   late Animation<double> _entryFade;
   late Animation<Offset> _entrySlide;
@@ -1062,8 +1217,40 @@ class _ReportCardWidgetState extends State<_ReportCard>
                 ),
                 const SizedBox(height: 14),
 
+                                if (report.submissions.isNotEmpty)
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      const Icon(Icons.group_outlined, color: Colors.white54, size: 14),
+                      const Text(
+                        'Reported by:',
+                        style: TextStyle(
+                          color: Colors.white54,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                      ...report.submissions.map((sub) => Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.orange.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              (sub['user_name'] ?? 'Citizen').toString(),
+                              style: const TextStyle(
+                                  color: AppColors.orange, fontSize: 10, fontWeight: FontWeight.bold, decoration: TextDecoration.none),
+                            ),
+                          )),
+                    ],
+                  ),
+                if (report.submissions.isNotEmpty) const SizedBox(height: 14),
+
                 // ── TWO‑IMAGE GRID (restored) ────────────────────────────
-                _buildImageGrid(photoCount),
+                _buildImageGrid(report.submissions.length > 0 ? report.submissions.length : 2),
                 const SizedBox(height: 14),
 
                 // ── Vote Buttons ─────────────────────────────────────────
@@ -1092,11 +1279,270 @@ class _ReportCardWidgetState extends State<_ReportCard>
                     ),
                   ],
                 ),
+                
+                // ── Nested Submissions Dropdown ─────────────────────────
+                if (report.submissions.length > 1) ...[
+                  const SizedBox(height: 16),
+                  const Divider(color: Colors.white12, height: 1),
+                  InkWell(
+                    onTap: () {
+                      setState(() {
+                        _isExpanded = !_isExpanded;
+                      });
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            _isExpanded
+                                ? 'Hide Matched Reports'
+                                : 'Show Matched Reports (${report.submissions.length - 1})',
+                            style: const TextStyle(
+                              color: AppColors.orange,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(
+                            _isExpanded
+                                ? Icons.keyboard_arrow_up_rounded
+                                : Icons.keyboard_arrow_down_rounded,
+                            color: AppColors.orange,
+                            size: 18,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (_isExpanded)
+                    ...report.submissions
+                        .skip(1)
+                        .map((sub) => _buildNestedReportCard(sub, report)),
+                ],
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildNestedReportCard(dynamic sub, ReportModel mainReport) {
+    return GestureDetector(
+      onTap: () {
+        // Show popup info
+        _showNestedReportDetails(sub, mainReport);
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.bgDark,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    sub['title'] ?? mainReport.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                Text(
+                  _formatTime(sub['timestamp'] ?? mainReport.createdAt),
+                  style: const TextStyle(
+                    color: Colors.white54,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              sub['description'] ?? '',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(
+                  Icons.person_outline_rounded,
+                  color: AppColors.orange,
+                  size: 12,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  sub['user_name'] ?? 'Citizen',
+                  style: const TextStyle(
+                    color: AppColors.orange,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatTime(String raw) {
+    try {
+      final dt = DateTime.parse(raw);
+      // Rough formatting for display
+      final diff = DateTime.now().difference(dt);
+      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+      if (diff.inHours < 24) return '${diff.inHours}h ago';
+      return '${diff.inDays}d ago';
+    } catch (_) {
+      return 'Just now';
+    }
+  }
+
+  void _showNestedReportDetails(dynamic sub, ReportModel mainReport) {
+    showDialog(
+      context: context,
+      builder: (_) {
+        return Dialog(
+          backgroundColor: AppColors.bgSurface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        sub['title'] ?? mainReport.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white54),
+                      onPressed: () => Navigator.pop(context),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(Icons.person_outline, color: AppColors.orange, size: 14),
+                    const SizedBox(width: 4),
+                    Text(
+                      sub['user_name'] ?? 'Citizen',
+                      style: const TextStyle(color: AppColors.orange, fontSize: 13),
+                    ),
+                    const SizedBox(width: 12),
+                    const Icon(Icons.access_time, color: Colors.white54, size: 14),
+                    const SizedBox(width: 4),
+                    Text(
+                      _formatTime(sub['timestamp'] ?? mainReport.createdAt),
+                      style: const TextStyle(color: Colors.white54, fontSize: 12),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                
+                // Nested Image 
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    height: 160,
+                    width: double.infinity,
+                    color: AppColors.bgDark,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        const Icon(Icons.image_outlined, color: Colors.white24, size: 40),
+                        Positioned(
+                          bottom: 8,
+                          child: Text(
+                            'Evidence Photo',
+                            style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                Text(
+                  'Description',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  sub['description'] ?? '',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                
+                // Likes/Dislikes (Using main report's for now as nested reports don't have separate likes strictly in the DB design yet, or we show 0)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.thumb_up_alt_outlined, color: AppColors.success, size: 20),
+                        const SizedBox(width: 6),
+                        Text('${mainReport.likes}', style: const TextStyle(color: Colors.white, fontSize: 14)),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        const Icon(Icons.thumb_down_alt_outlined, color: AppColors.danger, size: 20),
+                        const SizedBox(width: 6),
+                        Text('${mainReport.dislikes}', style: const TextStyle(color: Colors.white, fontSize: 14)),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

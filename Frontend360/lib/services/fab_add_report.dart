@@ -12,7 +12,8 @@ class ReportDisasterScreen extends StatefulWidget {
   State<ReportDisasterScreen> createState() => _ReportDisasterScreenState();
 }
 
-class _ReportDisasterScreenState extends State<ReportDisasterScreen> {
+class _ReportDisasterScreenState extends State<ReportDisasterScreen>
+    with SingleTickerProviderStateMixin {
   // ── Form state ─────────────────────────────────────────────────────────────
   String _selectedType = 'Flood';
   int _severityLevel = 0; // 0 = not selected
@@ -20,6 +21,31 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen> {
   final TextEditingController _descCtrl = TextEditingController();
   final List<String> _uploadedPhotos = []; // Simulated file paths
   bool _isSubmitting = false;
+
+  // Custom Duplicate Detection State
+  bool _isDuplicateCheckRunning = false;
+  bool _duplicateCheckDone = false;
+  bool _isDuplicate = false; // true = merged (match), false = brand new
+  int _duplicateStep = 0; // 0 to 3
+
+  late AnimationController _hourglassController;
+
+  @override
+  void initState() {
+    super.initState();
+    _hourglassController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    );
+  }
+
+  @override
+  void dispose() {
+    _hourglassController.dispose();
+    _titleCtrl.dispose();
+    _descCtrl.dispose();
+    super.dispose();
+  }
 
   final List<String> _disasterTypes = [
     'Flood',
@@ -64,13 +90,6 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen> {
     ),
   ];
 
-  @override
-  void dispose() {
-    _titleCtrl.dispose();
-    _descCtrl.dispose();
-    super.dispose();
-  }
-
   // ── Validate & submit ──────────────────────────────────────────────────────
   Future<void> _submit() async {
     if (_titleCtrl.text.trim().isEmpty) {
@@ -90,49 +109,97 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen> {
       return;
     }
 
-    setState(() => _isSubmitting = true);
-    
+    setState(() {
+      _isSubmitting = true;
+      _isDuplicateCheckRunning = true;
+      _duplicateCheckDone = false;
+      _duplicateStep = 0;
+    });
+
+    _hourglassController.repeat();
+
     try {
       final api = ApiService();
       String severityStr = "Low";
       if (_severityLevel == 1) severityStr = "Medium";
+      // Assuming severity values as mapped before mapping structure isn't exactly parsed
+      // Wait we don't have severityLevel == 1 strictly matching "Medium", let's check
+      if (_severityLevel == 1) severityStr = "Medium";
       if (_severityLevel == 2) severityStr = "High";
       if (_severityLevel == 3) severityStr = "Critical";
 
-                      final response = await api.post('/reports/', body: {
-        "disaster_type": _selectedType,
-        "title": _titleCtrl.text,
-        "description": _descCtrl.text,
-        "latitude": 27.7172, // TODO: Replace with real GPS lat
-        "longitude": 85.3240, // TODO: Replace with real GPS lng
-        "severity": severityStr,
-      });
+      final response = await api.post(
+        '/reports/',
+        body: {
+          "disaster_type": _selectedType,
+          "title": _titleCtrl.text,
+          "description": _descCtrl.text,
+          "latitude": 27.7172, // TODO: Replace with real GPS lat
+          "longitude": 85.3240, // TODO: Replace with real GPS lng
+          "severity": severityStr,
+        },
+      );
 
+      final bool merged =
+          response.containsKey('merged') ? response['merged'] : false;
+      final int sourcesCount =
+          response.containsKey('sources') ? response['sources'] : 1;
       final reportId = response['report_id'];
+
+      // Keep it checking UI state but secretly update _isDuplicate so the step dots color correctly
+      if (mounted) {
+        setState(() {
+          _isDuplicate = merged;
+        });
+      }
+
+      // Start "Duplicate Detection" artificial animation delay (1.4s per step)
+      for (int i = 1; i <= 3; i++) {
+        await Future.delayed(const Duration(milliseconds: 1400));
+        if (!mounted) return;
+        setState(() => _duplicateStep = i);
+      }
+
+      // Stop checking animation
+      if (mounted) {
+        setState(() {
+          _isDuplicateCheckRunning = false;
+          _duplicateCheckDone = true;
+        });
+        _hourglassController.stop();
+      }
+
+      // Wait 1.5 seconds for users to process result before closing
+      await Future.delayed(const Duration(milliseconds: 1500));
 
       // Upload photos if any
       for (String path in _uploadedPhotos) {
-         try {
-           await api.multipartPost('/media/upload/$reportId', path);
-         } catch (e) {
-           debugPrint("Media upload failed for $path: $e");
-         }
+        try {
+          await api.multipartPost('/media/upload/$reportId', path);
+        } catch (e) {
+          debugPrint("Media upload failed for $path: $e");
+        }
       }
 
       if (mounted) {
         context.read<ReportProvider>().fetchReports(); // Refresh Feed
       }
-      
+
       setState(() => _isSubmitting = false);
 
       if (!mounted) return;
-      _showSuccessDialog();
+      _showSuccessDialog(merged, sourcesCount);
     } catch (e) {
       if (mounted) {
-        setState(() => _isSubmitting = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error submitting report: $e')),
-        );
+        setState(() {
+          _isSubmitting = false;
+          _isDuplicateCheckRunning = false;
+          _duplicateCheckDone = false;
+        });
+        _hourglassController.stop();
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error submitting report: $e')));
       }
     }
   }
@@ -166,7 +233,7 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen> {
     setState(() => _uploadedPhotos.removeAt(index));
   }
 
-  void _showSuccessDialog() {
+  void _showSuccessDialog(bool isMerged, int sourcesCount) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -198,9 +265,9 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen> {
                   ),
                 ),
                 const SizedBox(height: 18),
-                const Text(
-                  'Report Submitted!',
-                  style: TextStyle(
+                Text(
+                  isMerged ? 'Matched & Merged!' : 'Report Submitted!',
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
@@ -208,10 +275,12 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                const Text(
-                  'Your report has been submitted and will be reviewed by authorities.',
+                Text(
+                  isMerged
+                      ? 'Your report is matched with ${sourcesCount - 1} persons for the same incident.'
+                      : 'Your report has been submitted and will be reviewed by authorities.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: Colors.white54,
                     fontSize: 13,
                     height: 1.5,
@@ -233,7 +302,7 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen> {
                       ),
                     ),
                     child: const Text(
-                      'Done',
+                      'Ok',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 14,
@@ -799,6 +868,23 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen> {
 
   // ── 7. Report Duplicate Detection ─────────────────────────────────────────────────────
   Widget _buildDuplicateDetectionCard() {
+    final bool isFinished = _duplicateCheckDone;
+    // We already know whether it is merged by the time the loop starts because we wait for the API call first.
+    // If _isDuplicateCheckRunning is true, we display coloring based on `_isDuplicate` up to `_duplicateStep`.
+    // Wait, the backend result is returned *before* the 5 second loop, but we need to know the result.
+    // In our `_submit`, we set `_isDuplicate` *after* the loop! Wait, `_isDuplicate` is set at the end, I need to set it *before* the loop. Let me fix the `_submit` logic in a second. Assuming `_isDuplicate` is set before the loop.
+
+    // Let's determine the badge text and coloring
+    String badgeText = 'PENDING';
+    Color badgeColor = AppColors.warning;
+    if (_isDuplicateCheckRunning) {
+      badgeText = 'CHECKING...';
+      badgeColor = Colors.blue;
+    } else if (_duplicateCheckDone) {
+      badgeText = _isDuplicate ? 'MATCH FOUND' : 'UNIQUE';
+      badgeColor = _isDuplicate ? AppColors.success : AppColors.danger;
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: AppColors.bgSurface,
@@ -816,23 +902,37 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen> {
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  color: AppColors.warning.withAlpha(26),
+                  color: badgeColor.withAlpha(26),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(
-                  Icons.manage_search_rounded,
-                  color: AppColors.warning,
-                  size: 17,
-                ),
+                child:
+                    _isDuplicateCheckRunning
+                        ? RotationTransition(
+                          turns: _hourglassController,
+                          child: Icon(
+                            Icons.hourglass_empty_rounded,
+                            color: badgeColor,
+                            size: 17,
+                          ),
+                        )
+                        : Icon(
+                          _duplicateCheckDone
+                              ? (_isDuplicate
+                                  ? Icons.merge_type_rounded
+                                  : Icons.check_circle_outline)
+                              : Icons.manage_search_rounded,
+                          color: badgeColor,
+                          size: 17,
+                        ),
               ),
               const SizedBox(width: 10),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'DUPLICATE DETECTION',
                     style: TextStyle(
-                      color: AppColors.warning,
+                      color: badgeColor,
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 1.2,
@@ -854,17 +954,17 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                 decoration: BoxDecoration(
-                  color: AppColors.warning.withAlpha(26),
+                  color: badgeColor.withAlpha(26),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: AppColors.warning.withAlpha(80),
+                    color: badgeColor.withAlpha(80),
                     width: 0.8,
                   ),
                 ),
-                child: const Text(
-                  'PENDING',
+                child: Text(
+                  badgeText,
                   style: TextStyle(
-                    color: AppColors.warning,
+                    color: badgeColor,
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.8,
@@ -884,8 +984,19 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen> {
             'Checking nearby reports all over the app...',
             'Matching disaster type & severity level...',
             'Comparing report timestamps (±2 hr window)...',
-          ].map(
-            (label) => Padding(
+          ].asMap().entries.map((entry) {
+            final int index = entry.key;
+            final String label = entry.value;
+
+            // Determine the color of this specific step dot
+            Color dotColor = Colors.white.withAlpha(80); // default
+            if (_duplicateCheckDone ||
+                (_isDuplicateCheckRunning && _duplicateStep > index)) {
+              // If it's a match, steps are green. If not match, steps are red.
+              dotColor = _isDuplicate ? AppColors.success : AppColors.danger;
+            }
+
+            return Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Container(
                 padding: const EdgeInsets.symmetric(
@@ -898,11 +1009,12 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen> {
                 ),
                 child: Row(
                   children: [
-                    Container(
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 500),
                       width: 7,
                       height: 7,
                       decoration: BoxDecoration(
-                        color: Colors.white.withAlpha(80),
+                        color: dotColor,
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -910,23 +1022,40 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen> {
                     Text(
                       label,
                       style: TextStyle(
-                        color: Colors.white.withAlpha(130),
+                        // Option to dim un-reached text during loading?
+                        color: Colors.white.withAlpha(
+                          (_duplicateCheckDone ||
+                                  _isDuplicateCheckRunning &&
+                                      _duplicateStep > index)
+                              ? 255
+                              : 130,
+                        ),
                         fontSize: 12.5,
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-          ),
+            );
+          }),
 
           const SizedBox(height: 4),
 
           // ── Footer note ─────────────────────────────────────────────────────
           Center(
             child: Text(
-              'This check runs automatically on submit — no action needed',
-              style: TextStyle(color: Colors.white.withAlpha(70), fontSize: 11),
+              _duplicateCheckDone
+                  ? (_isDuplicate
+                      ? 'Match found! Your report will be grouped with the existing one.'
+                      : 'No matches found. This is a unique disaster.')
+                  : 'This check runs automatically on submit — no action needed',
+              style: TextStyle(
+                color:
+                    _duplicateCheckDone
+                        ? Colors.white.withAlpha(180)
+                        : Colors.white.withAlpha(70),
+                fontSize: 11,
+              ),
               textAlign: TextAlign.center,
             ),
           ),

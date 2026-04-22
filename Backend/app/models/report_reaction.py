@@ -12,10 +12,10 @@ class ReportReaction(Base):
     __tablename__ = "report_reactions"
 
     id = Column(Integer, primary_key=True, index=True)
-    report_id = Column(Integer, ForeignKey("reports.id", ondelete="CASCADE"), nullable=False)
+    incident_id = Column(Integer, ForeignKey("incidents.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     reaction_type = Column(Enum(ReactionType), nullable=False)
 
     __table_args__ = (
-        UniqueConstraint('report_id', 'user_id', name='uq_report_user_reaction'),
+        UniqueConstraint('incident_id', 'user_id', name='uq_incident_user_reaction'),
     )

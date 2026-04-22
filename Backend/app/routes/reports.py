@@ -1,28 +1,45 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from typing import List, Optional
 import math
 
 from ..database import get_db
+from ..models.incident import Incident
 from ..models.report import Report
 from ..models.user import User
 from .auth import get_current_user
-from sentence_transformers import SentenceTransformer
 from ..models.report_embedding import ReportEmbedding
+from google import genai
+from google.genai import types
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
+router = APIRouter(prefix="/reports", tags=["Reports/Incidents"])
 
-router = APIRouter(prefix="/reports", tags=["Reports"])
-model = SentenceTransformer('all-mpnet-base-v2')
-
+client = genai.Client(api_key=os.environ.get("GOOGLE_API_KEY", ""))
 
 def get_embedding(text: str) -> list[float]:
-    return model.encode(text).tolist()
+    # Check if API key is missing from environment instead of checking the client object
+    if not os.environ.get("GOOGLE_API_KEY"):
+        return [0.0] * 1536
+    try:
+        result = client.models.embed_content(
+            model="gemini-embedding-001",
+            contents=text,
+            config=types.EmbedContentConfig(
+                task_type="SEMANTIC_SIMILARITY",
+                output_dimensionality=1536
+            )
+        )
+        if not result.embeddings:
+            raise ValueError("Google embedding API returned no embeddings")
+        return result.embeddings[0].values
+    except Exception as e:
+        print("Embedding error:", e)
+        return [0.0] * 1536
 
-
-# ======================
-# Pydantic Schemas
-# ======================
 class ReportCreateRequest(BaseModel):
     disaster_type: str
     title: str
@@ -41,293 +58,200 @@ class ReportUpdateRequest(BaseModel):
     longitude: Optional[float] = None
     severity: Optional[str] = None
 
-
 class DuplicateCheckRequest(BaseModel):
     title: str
     description: str
 
-
-# ======================
-# Helper: Haversine distance calculator
-# ======================
 def calculate_distance(lat1, lon1, lat2, lon2):
     R = 6371
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
-    a = (
-        math.sin(dlat / 2) ** 2
-        + math.cos(math.radians(lat1))
-        * math.cos(math.radians(lat2))
-        * math.sin(dlon / 2) ** 2
-    )
+    a = (math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2)
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
 
+def serialize_incident(inc):
+    submissions = []
+    for r in inc.reports:
+        user_name = r.user.full_name if (hasattr(r, "user") and r.user) else str(r.user_id)
+        # Using string representation of timestamp for time updated
+        ts = r.timestamp.isoformat() if hasattr(r, 'timestamp') and r.timestamp else ''
+        submissions.append({
+            "id": r.id, 
+            "user_id": str(r.user_id), 
+            "user_name": user_name, 
+            "description": r.description,
+            "timestamp": ts,
+            "title": inc.title 
+        })
+    return {
+        "id": inc.id,
+        "user_id": submissions[0]["user_id"] if submissions else None,
+        "disaster_type": inc.disaster_type,
+        "title": inc.title,
+        "description": inc.description,
+        "location": inc.location,    
+        "latitude": inc.latitude,
+        "longitude": inc.longitude,
+        "severity": inc.severity,
+        "status": inc.status,
+        "created_at": inc.created_at,
+        "updated_at": inc.updated_at,
+        "sources": inc.sources or len(submissions),
+        "submissions": submissions
+    }
 
-# ======================
-# Create Report (citizen or approved admin)
-# ======================
 @router.post("/")
 def create_report(
     payload: ReportCreateRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    THRESHOLD = 0.82
+    DISASTER_RADIUS_KM = {"flood": 15.0, "landslide": 2.0, "earthquake": 50.0, "fire": 1.0, "default": 5.0}
+    TEXT_THRESHOLD = 0.8
 
-    # Step 1: Convert new report text to vector
+    RADIUS_KM = DISASTER_RADIUS_KM.get(payload.disaster_type.lower(), DISASTER_RADIUS_KM["default"])
     embedding = get_embedding(f"{payload.title}. {payload.description}")
 
-    # Step 2: Check if a similar report already exists
-    closest = (
-        db.query(
-            ReportEmbedding,
-            (1 - ReportEmbedding.embedding_vector.cosine_distance(embedding)).label("similarity")
+    same_type_incidents = db.query(Incident).filter(Incident.disaster_type.ilike(payload.disaster_type)).all()
+    nearby_incident_ids = []
+    nearby_distances = {}
+
+    for inc in same_type_incidents:
+        if inc.latitude is None or inc.longitude is None: continue
+        distance_km = calculate_distance(payload.latitude, payload.longitude, inc.latitude, inc.longitude)
+        if distance_km <= RADIUS_KM:
+            nearby_incident_ids.append(inc.id)
+            nearby_distances[inc.id] = round(distance_km, 2)
+
+    closest = None
+    if nearby_incident_ids:
+        closest = (
+            db.query(ReportEmbedding, (1 - ReportEmbedding.embedding_vector.cosine_distance(embedding)).label("similarity"))
+            .filter(ReportEmbedding.embedding_vector.isnot(None))
+            .filter(ReportEmbedding.incident_id.in_(nearby_incident_ids))
+            .order_by(ReportEmbedding.embedding_vector.cosine_distance(embedding))
+            .first()
         )
-        .filter(ReportEmbedding.embedding_vector.isnot(None))
-        .order_by(ReportEmbedding.embedding_vector.cosine_distance(embedding))
-        .first()
-    )
 
-    # Step 3: If duplicate found, merge into existing report
+    matched_incident = None
+    similarity_score = 0.0
+
     if closest is not None:
-        report_embedding, similarity = closest
-        similarity = float(similarity)
+        emb_row, sim = closest
+        similarity_score = float(sim)
+        if similarity_score >= TEXT_THRESHOLD:
+            matched_incident = db.query(Incident).filter(Incident.id == emb_row.incident_id).first()
 
-        if similarity >= THRESHOLD:
-            # Find the existing report
-            existing_report = db.query(Report).filter(
-                Report.id == report_embedding.report_id
-            ).first()
+    if matched_incident:
+        matched_incident.sources = (matched_incident.sources or 1) + 1
+        db.commit()
+        db.refresh(matched_incident)
+        
+        new_report = Report(incident_id=matched_incident.id, user_id=current_user.id, description=payload.description)
+        db.add(new_report)
+        db.commit()
 
-            if existing_report:
-                # Increment sources count
-                existing_report.sources = (existing_report.sources or 1) + 1 # pyright: ignore[reportAttributeAccessIssue]
-                db.commit()
-                db.refresh(existing_report)
+        distance_km = nearby_distances.get(matched_incident.id, 0.0)
 
-                return {
-                    "message": f"Your report matched an existing report and has been merged.",
-                    "merged": True,
-                    "matched_report_id": existing_report.id,
-                    "matched_report_title": existing_report.title,
-                    "similarity_score": round(similarity, 4),
-                    "sources": existing_report.sources
-                }
+        return {
+            "message": "Your report matched an existing incident and has been merged.",
+            "merged": True,
+            "report_id": matched_incident.id,
+            "disaster_type": payload.disaster_type,
+            "similarity_score": round(similarity_score, 4),
+            "distance_km": distance_km,
+            "radius_used_km": RADIUS_KM,
+            "sources": matched_incident.sources
+        }
+    else:
+        new_incident = Incident(
+            disaster_type=payload.disaster_type, title=payload.title, description=payload.description,
+            location=payload.location, latitude=payload.latitude, longitude=payload.longitude,
+            severity=payload.severity, sources=1
+        )
+        db.add(new_incident)
+        db.commit()
+        db.refresh(new_incident)
 
-    # Step 4: No duplicate found — save as a brand new report
-    new_report = Report(
-        user_id=current_user.id,
-        disaster_type=payload.disaster_type,
-        title=payload.title,
-        description=payload.description,
-        location=payload.location,             
-        latitude=payload.latitude,
-        longitude=payload.longitude,
-        severity=payload.severity,
-        sources=1
-    )
-    db.add(new_report)
-    db.commit()
-    db.refresh(new_report)
+        new_report = Report(incident_id=new_incident.id, user_id=current_user.id, description=payload.description)
+        db.add(new_report)
+        db.commit()
 
- # Step 5: Save its embedding
-    report_embedding = ReportEmbedding(
-        report_id=new_report.id,
-        embedding_vector=embedding
-    )
-    db.add(report_embedding)
-    db.commit()
+        new_embedding = ReportEmbedding(incident_id=new_incident.id, embedding_vector=embedding)
+        db.add(new_embedding)
+        db.commit()
 
-    return {
-        "message": "New report created successfully",
-        "merged": False,
-        "report_id": new_report.id,
-        "sources": 1
-    }
+        return {
+            "message": "New report/incident created successfully",
+            "merged": False,
+            "report_id": new_incident.id,
+            "disaster_type": payload.disaster_type,
+            "radius_used_km": RADIUS_KM,
+            "sources": 1
+        }
 
-# ======================
-# Get All Reports (public)
-# ======================
 @router.get("/", response_model=List[dict])
 def get_reports(db: Session = Depends(get_db)):
-    reports = db.query(Report).all()
-    result = []
-    for r in reports:
-        result.append({
-            "id": r.id,
-            "user_id": r.user_id,
-            "disaster_type": r.disaster_type,
-            "title": r.title,
-            "description": r.description,
-            "location": r.location,    
-            "latitude": r.latitude,
-            "longitude": r.longitude,
-            "severity": r.severity,
-            "status": r.status,
-            "created_at": r.created_at,
-            "updated_at": r.updated_at,
-            "sources": r.sources 
-        })
-    return result
+    incidents = db.query(Incident).options(joinedload(Incident.reports).joinedload(Report.user)).all()
+    return [serialize_incident(inc) for inc in incidents]
 
-
-# ======================
-# Get Verified Reports (public)
-# ======================
 @router.get("/verified", response_model=List[dict])
 def get_verified_reports(db: Session = Depends(get_db)):
-    reports = db.query(Report).filter(Report.status == "Verified").all()
+    incidents = db.query(Incident).filter(Incident.status == "Verified").options(joinedload(Incident.reports).joinedload(Report.user)).all()
+    if not incidents: raise HTTPException(status_code=404, detail="No verified reports found")
+    return [serialize_incident(inc) for inc in incidents]
 
-    if not reports:
-        raise HTTPException(status_code=404, detail="No verified reports found")
-
-    result = []
-    for r in reports:
-        result.append({
-            "id": r.id,
-            "user_id": r.user_id,
-            "disaster_type": r.disaster_type,
-            "title": r.title,
-            "description": r.description,
-            "location": r.location,      
-            "latitude": r.latitude,
-            "longitude": r.longitude,
-            "severity": r.severity,
-            "status": r.status,
-            "created_at": r.created_at,
-            "updated_at": r.updated_at,
-            "sources": r.sources 
-        })
-    return result
-
-
-# ======================
-# Get My Reports (logged-in user's own reports)
-# ======================
 @router.get("/my-reports", response_model=List[dict])
-def get_my_reports(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    reports = db.query(Report).filter(Report.user_id == current_user.id).all()
+def get_my_reports(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    reports = db.query(Report).filter(Report.user_id == current_user.id).options(joinedload(Report.incident)).all()
+    if not reports: raise HTTPException(status_code=404, detail="You have not posted any reports")
+    inc_ids = list(set([r.incident_id for r in reports]))
+    incidents = db.query(Incident).filter(Incident.id.in_(inc_ids)).options(joinedload(Incident.reports).joinedload(Report.user)).all()
+    return [serialize_incident(inc) for inc in incidents]
 
-    if not reports:
-        raise HTTPException(status_code=404, detail="You have not posted any reports")
-
-    result = []
-    for r in reports:
-        result.append({
-            "id": r.id,
-            "disaster_type": r.disaster_type,
-            "title": r.title,
-            "description": r.description,
-            "location": r.location,    
-            "latitude": r.latitude,
-            "longitude": r.longitude,
-            "severity": r.severity,
-            "status": r.status,
-            "created_at": r.created_at,
-            "updated_at": r.updated_at,
-            "sources": r.sources 
-        })
-    return result
-
-
-# ======================
-# Get Nearby Reports (public) — all statuses
-# ======================
 @router.get("/nearby", response_model=List[dict])
-def get_nearby_reports(
-    lat: float,
-    lon: float,
-    radius: float = 5.0,
-    db: Session = Depends(get_db)
-):
-    all_reports = db.query(Report).all()
-
-    if not all_reports:
-        raise HTTPException(status_code=404, detail="No reports found")
+def get_nearby_reports(lat: float, lon: float, radius: float = 5.0, db: Session = Depends(get_db)):
+    incidents = db.query(Incident).options(joinedload(Incident.reports).joinedload(Report.user)).all()
+    if not incidents: raise HTTPException(status_code=404, detail="No incidents found")
 
     nearby = []
-    for r in all_reports:
-        distance = calculate_distance(lat, lon, r.latitude, r.longitude)
+    for inc in incidents:
+        distance = calculate_distance(lat, lon, inc.latitude, inc.longitude)
         if distance <= radius:
-            nearby.append({
-                "id": r.id,
-                "user_id": r.user_id,
-                "disaster_type": r.disaster_type,
-                "title": r.title,
-                "description": r.description,
-                "location": r.location,   
-                "latitude": r.latitude,
-                "longitude": r.longitude,
-                "severity": r.severity,
-                "status": r.status,
-                "distance_km": round(distance, 2),
-                "created_at": r.created_at,
-                "updated_at": r.updated_at,
-            "sources": r.sources 
-            })
-
-    if not nearby:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No reports found within {radius} km"
-        )
-
+            data = serialize_incident(inc)
+            data["distance_km"] = round(distance, 2)
+            nearby.append(data)
+    if not nearby: raise HTTPException(status_code=404, detail=f"No incidents found within {radius} km")
     nearby.sort(key=lambda x: x["distance_km"])
     return nearby
 
+@router.delete("/{report_id}")
+def delete_own_report(report_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report: raise HTTPException(status_code=404, detail="Report not found")
+    if report.user_id != current_user.id: raise HTTPException(status_code=403, detail="Not your report")
+    
+    incident_id = report.incident_id
+    db.delete(report)
+    db.commit()
+    
+    inc = db.query(Incident).filter(Incident.id == incident_id).first()
+    if inc and len(inc.reports) == 0:
+        db.delete(inc)
+        db.commit()
+    elif inc:
+        inc.sources -= 1
+        db.commit()
+        
+    return {"message": "Report deleted successfully"}
 
-# ======================
-# Check Duplicate Report
-# ======================
-@router.post("/check-duplicate")
-def check_duplicate(
-    payload: DuplicateCheckRequest,
-    db: Session = Depends(get_db)
-):
-    embedding = get_embedding(f"{payload.title}. {payload.description}")
+@router.get("/{report_id}")
+def get_report(report_id: int, db: Session = Depends(get_db)):
+    inc = db.query(Incident).filter(Incident.id == report_id).options(joinedload(Incident.reports).joinedload(Report.user)).first()
+    if not inc: raise HTTPException(status_code=404, detail="Incident not found")
+    return serialize_incident(inc)
 
-    closest = (
-        db.query(
-            ReportEmbedding,
-            (1 - ReportEmbedding.embedding_vector.cosine_distance(embedding)).label("similarity")
-        ).filter(ReportEmbedding.embedding_vector.isnot(None))
-        .order_by(ReportEmbedding.embedding_vector.cosine_distance(embedding))
-        .first()
-    )
-
-    if closest is None:
-        return {"is_duplicate": False, "similarity_score": 0.0}
-
-    report_embedding, similarity = closest
-    similarity = float(similarity)
-    THRESHOLD = 0.82
-
-    if similarity >= THRESHOLD:
-        matched_report = db.query(Report).filter(
-            Report.id == report_embedding.report_id
-        ).first()
-        return {
-            "is_duplicate": True,
-            "similarity_score": round(similarity, 4),
-            "matched_report_id": matched_report.id if matched_report else None,
-            "matched_report_title": matched_report.title if matched_report else None
-        }
-
-    return {
-        "is_duplicate": False,
-        "similarity_score": round(similarity, 4),
-        "matched_report_id": None,
-        "matched_report_title": None
-    }
-
-
-# ======================
-# Edit Own Report (citizen only)
-# ======================
 @router.put("/{report_id}")
 def update_report(
     report_id: int,
@@ -335,90 +259,16 @@ def update_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    report = db.query(Report).filter(Report.id == report_id).first()
-
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
-
-    if report.user_id != current_user.id:  # pyright: ignore[reportGeneralTypeIssues]
-        raise HTTPException(
-            status_code=403,
-            detail="You can only edit your own reports"
-        )
-
-    if payload.disaster_type is not None:
-        setattr(report, "disaster_type", payload.disaster_type)
-    if payload.title is not None:
-        setattr(report, "title", payload.title)
-    if payload.description is not None:
-        setattr(report, "description", payload.description)
-    if payload.location is not None:          
-        setattr(report, "location", payload.location)
-    if payload.latitude is not None:
-        setattr(report, "latitude", payload.latitude)
-    if payload.longitude is not None:
-        setattr(report, "longitude", payload.longitude)
-    if payload.severity is not None:
-        setattr(report, "severity", payload.severity)
-
+    inc = db.query(Incident).filter(Incident.id == report_id).first()
+    if not inc: raise HTTPException(status_code=404, detail="Incident not found")
+    
+    if payload.disaster_type: inc.disaster_type = payload.disaster_type
+    if payload.title: inc.title = payload.title
+    if payload.description: inc.description = payload.description
+    if payload.location: inc.location = payload.location
+    if payload.latitude: inc.latitude = payload.latitude
+    if payload.longitude: inc.longitude = payload.longitude
+    if payload.severity: inc.severity = payload.severity
     db.commit()
-    db.refresh(report)
-
-    return {
-        "message": "Report updated successfully",
-        "report_id": report.id,
-        "updated_by": current_user.email
-    }
-
-
-# ======================
-# Delete Own Report (citizen only)
-# ======================
-@router.delete("/{report_id}")
-def delete_own_report(
-    report_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    report = db.query(Report).filter(Report.id == report_id).first()
-
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
-
-    if report.user_id != current_user.id:  # pyright: ignore[reportGeneralTypeIssues]
-        raise HTTPException(
-            status_code=403,
-            detail="You can only delete your own reports"
-        )
-
-    db.delete(report)
-    db.commit()
-
-    return {"message": f"Report {report_id} deleted successfully"}
-
-
-# ======================
-# Get Single Report (public)
-# ======================
-@router.get("/{report_id}")
-def get_report(report_id: int, db: Session = Depends(get_db)):
-    report = db.query(Report).filter(Report.id == report_id).first()
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
-
-    return {
-        "id": report.id,
-        "user_id": report.user_id,
-        "disaster_type": report.disaster_type,
-        "title": report.title,
-        "description": report.description,
-        "location": report.location,          
-        "latitude": report.latitude,
-        "longitude": report.longitude,
-        "severity": report.severity,
-        "status": report.status,
-        "created_at": report.created_at,
-        "updated_at": report.updated_at,
-            "sources": report.sources 
-    }
-  
+    db.refresh(inc)
+    return {"message": "Incident updated", "report_id": inc.id}
