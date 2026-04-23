@@ -3,22 +3,22 @@ from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from typing import List, Optional
 import math
-
 from ..database import get_db
 from ..models.incident import Incident
 from ..models.report import Report
 from ..models.user import User
 from .auth import get_current_user
 from ..models.report_embedding import ReportEmbedding
-from google import genai
+from google.genai import Client
 from google.genai import types
+from fastapi import APIRouter
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
 router = APIRouter(prefix="/reports", tags=["Reports/Incidents"])
 
-client = genai.Client(api_key=os.environ.get("GOOGLE_API_KEY", ""))
+client = Client(api_key=os.environ.get("GOOGLE_API_KEY"))
 
 def get_embedding(text: str) -> list[float]:
     # Check if API key is missing from environment instead of checking the client object
@@ -82,7 +82,8 @@ def serialize_incident(inc):
             "user_name": user_name, 
             "description": r.description,
             "timestamp": ts,
-            "title": inc.title 
+            "title": inc.title,
+            "verified": getattr(r, 'verified', False)
         })
     return {
         "id": inc.id,
@@ -95,6 +96,7 @@ def serialize_incident(inc):
         "longitude": inc.longitude,
         "severity": inc.severity,
         "status": inc.status,
+        "verified": getattr(inc, 'verified', False),
         "created_at": inc.created_at,
         "updated_at": inc.updated_at,
         "sources": inc.sources or len(submissions),
@@ -144,7 +146,7 @@ def create_report(
             matched_incident = db.query(Incident).filter(Incident.id == emb_row.incident_id).first()
 
     if matched_incident:
-        matched_incident.sources = (matched_incident.sources or 1) + 1
+        matched_incident.sources = (matched_incident.sources or 1) + 1 # type: ignore
         db.commit()
         db.refresh(matched_incident)
         

@@ -33,12 +33,12 @@ new_build = \"\"\"  @override
       reportId: m.id.length > 8 ? m.id.substring(0, 8) : m.id,
       status: m.status == 'unverified' ? 'Pending' : m.status.isEmpty ? 'Pending' : (m.status[0].toUpperCase() + m.status.substring(1)),
       type: m.type,
-      title: m.type + ' — ' + m.location,
+      title: m.type + ' ï¿½ ' + m.location,
       description: m.description,
       date: m.date,
       location: m.location,
-      lat: m.latitude.toStringAsFixed(4) + '°N',
-      lng: m.longitude.toStringAsFixed(4) + '°E',
+      lat: m.latitude.toStringAsFixed(4) + 'ï¿½N',
+      lng: m.longitude.toStringAsFixed(4) + 'ï¿½E',
       reporter: m.userId.length > 8 ? m.userId.substring(0, 8) : m.userId,
       trustScore: 80,
       upvotes: m.upvotes,
@@ -62,3 +62,4 @@ content = content.replace(old_build, new_build)
 with open(file_path, 'w', encoding='utf-8') as f:
     f.write(content)
 print("Done modifying admin reports")
+ # type: ignore

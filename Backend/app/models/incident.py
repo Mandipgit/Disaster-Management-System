@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime
+from sqlalchemy import Column, Integer, String, Text, Float, DateTime, Boolean
 from datetime import datetime, timezone
 from sqlalchemy.orm import relationship
 from ..database import Base
@@ -15,6 +15,7 @@ class Incident(Base):
     longitude = Column(Float)
     severity = Column(String)
     status = Column(String, default="Pending")
+    verified = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.now(timezone.utc))
 

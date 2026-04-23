@@ -122,7 +122,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   // ── FAB (mobile: circular +, tablet/desktop: extended with label) ───────────
   Widget? _buildFloatingButton(BuildContext context) {
     if (_activeNav == 5) return null; // Hide FAB on User Management section
-    
+
     final isMobile = _Breakpoint.isMobile(context);
 
     return MouseRegion(
@@ -338,7 +338,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   Widget _buildStatCards(BuildContext context) {
     final reportProvider = context.watch<ReportProvider>();
     final totalR = reportProvider.reports.length.toString();
-    final unverifieds = reportProvider.reports.where((r) => r.status.toLowerCase() == 'pending').length.toString();
+    final unverifieds =
+        reportProvider.reports
+            .where((r) => r.status.toLowerCase() == 'pending')
+            .length
+            .toString();
 
     final isTabletOrDesktop =
         _Breakpoint.isTablet(context) || _Breakpoint.isDesktop(context);
@@ -402,23 +406,32 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   Widget _buildPendingVerification(BuildContext context) {
     final reportProvider = context.watch<ReportProvider>();
-    final pendingModels = reportProvider.reports.where((r) => r.status.toLowerCase() == 'pending').toList();
-    final reports = pendingModels.map((m) => _PendingReportData(
-      reportId: 'RPT-${m.id}',
-      status: m.status,
-      submittedAgo: 'Just now',
-      type: m.disasterType,
-      location: m.title,
-      description: m.description,
-      upvotes: m.likes,
-      downvotes: m.dislikes,
-      date: m.createdAt,
-      lat: m.latitude.toStringAsFixed(4) + '°N',
-      lng: m.longitude.toStringAsFixed(4) + '°E',
-      reporter: m.userId.length > 8 ? m.userId.substring(0, 8) : m.userId,
-      trustScore: 80,
-      photoCount: 0,
-    )).toList();
+    final pendingModels =
+        reportProvider.reports
+            .where((r) => r.status.toLowerCase() == 'pending')
+            .toList();
+    final reports =
+        pendingModels
+            .map(
+              (m) => _PendingReportData(
+                reportId: 'RPT-${m.id}',
+                status: m.status,
+                submittedAgo: 'Just now',
+                type: m.disasterType,
+                location: m.title,
+                description: m.description,
+                upvotes: m.likes,
+                downvotes: m.dislikes,
+                date: m.createdAt,
+                lat: m.latitude.toStringAsFixed(4) + '°N',
+                lng: m.longitude.toStringAsFixed(4) + '°E',
+                reporter:
+                    m.userId.length > 8 ? m.userId.substring(0, 8) : m.userId,
+                trustScore: 80,
+                photoCount: 0,
+              ),
+            )
+            .toList();
 
     final isWide =
         _Breakpoint.isTablet(context) || _Breakpoint.isDesktop(context);
@@ -441,16 +454,26 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                           AdminReportDetailScreen(report: adminReport),
                         ),
                       ),
-                  onVerify:
-                      () => Navigator.push(
-                        context,
-                        _fadeRoute(
-                          AdminReportDetailScreen(
-                            report: adminReport,
-                            initialDecisionState: 'verified',
-                          ),
-                        ),
-                      ),
+                  onVerify: () async {
+                    try {
+                      final intId = int.tryParse(
+                        report.reportId.replaceAll(RegExp(r'[^0-9]'), ''),
+                      );
+                      if (intId != null)
+                        await reportProvider.verifyReport(intId);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Report verified')),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Verify failed: $e')),
+                        );
+                      }
+                    }
+                  },
                   onReject:
                       () => _showRejectionSheet(context, adminReport, report),
                   onReview:
@@ -476,16 +499,26 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                               AdminReportDetailScreen(report: adminReport),
                             ),
                           ),
-                      onVerify:
-                          () => Navigator.push(
-                            context,
-                            _fadeRoute(
-                              AdminReportDetailScreen(
-                                report: adminReport,
-                                initialDecisionState: 'verified',
-                              ),
-                            ),
-                          ),
+                      onVerify: () async {
+                        try {
+                          final intId = int.tryParse(
+                            report.reportId.replaceAll(RegExp(r'[^0-9]'), ''),
+                          );
+                          if (intId != null)
+                            await reportProvider.verifyReport(intId);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Report verified')),
+                            );
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Verify failed: $e')),
+                            );
+                          }
+                        }
+                      },
                       onReject:
                           () =>
                               _showRejectionSheet(context, adminReport, report),

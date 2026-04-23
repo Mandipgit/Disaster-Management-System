@@ -4,7 +4,6 @@ from sqlalchemy.orm import joinedload
 from pydantic import BaseModel
 from typing import List, Optional
 import math
-
 from ..database import get_db
 from ..models.incident import Incident
 from ..models.report import Report
@@ -21,7 +20,7 @@ import os
 load_dotenv()
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
-client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+client = genai.Client(api_key=os.getenv("AIzaSyApMqSv8sVrt8dp7aRXRbB6sj5oLZ8nojo"))
 
 def get_embedding(text: str) -> list[float]:
     result = client.models.embed_content(

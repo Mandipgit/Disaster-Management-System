@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ApiService {
   // Configured to the PC's actual local IPv4 address so physical Android devices on Wi-Fi can connect
   static String get baseUrl {
-    return 'http://192.168.254.236:8000'; // Using the latest IPv4 from terminal logs
+    return 'http://127.0.0.1:8000'; // Using the latest IPv4 from terminal logs
   }
 
   Future<Map<String, String>> _getHeaders() async {

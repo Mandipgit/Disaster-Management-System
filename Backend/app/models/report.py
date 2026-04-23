@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Float, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Text, Float, ForeignKey, DateTime, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime, timezone
 from sqlalchemy.orm import relationship
@@ -19,6 +19,8 @@ class Report(Base):
     
     timestamp = Column(DateTime, default=datetime.utcnow)
     trust_score_snapshot = Column(Float, default=1.0)
+    status = Column(String, default="Pending")
+    verified = Column(Boolean, default=False)
     
     incident = relationship("Incident", back_populates="reports")
     user = relationship("User") 
