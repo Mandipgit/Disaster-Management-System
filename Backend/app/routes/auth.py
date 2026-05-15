@@ -84,7 +84,7 @@ def login(
     # OAuth2PasswordRequestForm sends email in the "username" field in Swagger
     user = db.query(User).filter(User.email == form_data.username).first()
 
-    if not user or not verify_password(form_data.password, user.password_hash): # type: ignore
+    if not user or not verify_password(form_data.password, user.password_hash): # type: ignore # type: ignore
         raise HTTPException(status_code=400, detail="Invalid credentials")
 
     # ✅ Citizen → always allowed

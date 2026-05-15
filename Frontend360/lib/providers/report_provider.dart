@@ -11,9 +11,11 @@ class ReportModel {
   final double longitude;
   final String severity;
   final String status;
+  final bool verified;
   int likes;
   int dislikes;
   final String createdAt;
+  final List<dynamic> submissions;
 
   ReportModel({
     required this.id,
@@ -25,12 +27,15 @@ class ReportModel {
     required this.longitude,
     required this.severity,
     required this.status,
+    this.verified = false,
     required this.likes,
     required this.dislikes,
     required this.createdAt,
+    this.submissions = const [],
   });
 
   factory ReportModel.fromJson(Map<String, dynamic> json) {
+    final verified = json['verified'] ?? false;
     return ReportModel(
       id: json['id'] ?? 0,
       userId: json['user_id']?.toString() ?? '',
@@ -40,10 +45,12 @@ class ReportModel {
       latitude: (json['latitude'] ?? 0.0).toDouble(),
       longitude: (json['longitude'] ?? 0.0).toDouble(),
       severity: json['severity'] ?? 'Unknown',
-      status: json['status'] ?? 'Pending',
+      status: json['status'] ?? (verified ? 'Verified' : 'Pending'),
+      verified: verified,
       likes: json['likes'] ?? 0,
       dislikes: json['dislikes'] ?? 0,
       createdAt: json['created_at'] ?? '',
+      submissions: json['submissions'] ?? [],
     );
   }
 }
@@ -75,7 +82,9 @@ class ReportProvider extends ChangeNotifier {
 
   Future<void> reactToReport(int reportId, String reactionType) async {
     try {
-      final response = await _apiService.post('/reports/$reportId/react?reaction=$reactionType');
+      final response = await _apiService.post(
+        '/reports/$reportId/react?reaction=$reactionType',
+      );
       final newLikes = response['likes'];
       final newDislikes = response['dislikes'];
 
@@ -87,6 +96,36 @@ class ReportProvider extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint("Error reacting to report: $e");
+    }
+  }
+
+  Future<void> verifyReport(int reportId) async {
+    try {
+      await _apiService.put('/admin/reports/$reportId/verify');
+
+      final index = _reports.indexWhere((r) => r.id == reportId);
+      if (index != -1) {
+        _reports[index] = ReportModel(
+          id: _reports[index].id,
+          userId: _reports[index].userId,
+          disasterType: _reports[index].disasterType,
+          title: _reports[index].title,
+          description: _reports[index].description,
+          latitude: _reports[index].latitude,
+          longitude: _reports[index].longitude,
+          severity: _reports[index].severity,
+          status: 'Verified',
+          verified: true,
+          likes: _reports[index].likes,
+          dislikes: _reports[index].dislikes,
+          createdAt: _reports[index].createdAt,
+          submissions: _reports[index].submissions,
+        );
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Error verifying report: $e');
+      rethrow;
     }
   }
 }

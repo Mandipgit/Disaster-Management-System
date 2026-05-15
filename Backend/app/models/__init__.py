@@ -1,5 +1,6 @@
 # Models package
 from .user import User
+from .incident import Incident
 from .report import Report
 from .report_media import ReportMedia
 from .rescue_update import RescueUpdate

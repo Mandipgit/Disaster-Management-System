@@ -49,6 +49,7 @@ def get_all_reports(
             "longitude": r.longitude,
             "severity": r.severity,
             "status": r.status,
+            "verified": getattr(r, 'verified', False),
             "created_at": r.created_at,
             "updated_at": r.updated_at
         })
@@ -108,7 +109,30 @@ def verify_report(
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
 
-    report.status = "Verified" # type: ignore
+    # Mark report as verified and also update the linked incident
+    report.status = "Verified"
+    try:
+        report.verified = True
+    except Exception:
+        pass
+
+    # Also mark other reports in the same incident as verified
+    try:
+        incident_id = report.incident_id
+        related_reports = db.query(Report).filter(Report.incident_id == incident_id).all()
+        for rr in related_reports:
+            rr.verified = True
+            rr.status = "Verified"
+    except Exception:
+        pass
+
+    if hasattr(report, 'incident') and report.incident:
+        try:
+            report.incident.status = "Verified"
+            report.incident.verified = True
+        except Exception:
+            pass
+
     db.commit()
     db.refresh(report)
 

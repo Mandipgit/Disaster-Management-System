@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
-from app.models import User, Report, ReportMedia, RescueUpdate, RiskZone, ReportEmbedding, report_media, ReportReaction
+from app.models import User, Incident, Report, ReportMedia, RescueUpdate, RiskZone, ReportEmbedding, ReportReaction
 from app.routes import auth, admin, reports, media
 
 # Create all tables

@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ApiService {
   // Configured to the PC's actual local IPv4 address so physical Android devices on Wi-Fi can connect
   static String get baseUrl {
-    return 'http://127.0.0.1:8000';
+    return 'http://127.0.0.1:8000'; // Using the latest IPv4 from terminal logs
   }
 
   Future<Map<String, String>> _getHeaders() async {
@@ -80,12 +80,10 @@ class ApiService {
       String errorMessage = 'Error ${response.statusCode}';
       try {
         final decoded = jsonDecode(response.body);
-        if (decoded['detail'] != null) {
+        if (decoded != null && decoded is Map && decoded.containsKey('detail')) {
           errorMessage = decoded['detail'].toString();
         }
-      } catch (e) {
-        // Ignored
-      }
+      } catch (_) {}
       throw Exception(errorMessage);
     }
   }

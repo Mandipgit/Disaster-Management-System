@@ -6,7 +6,7 @@ class RescueUpdate(Base):
 
     id = Column(Integer, primary_key=True)
 
-    report_id = Column(Integer, ForeignKey("reports.id"))
+    incident_id = Column(Integer, ForeignKey("incidents.id", ondelete="CASCADE"), nullable=False)
 
     updated_by = Column(String)
     status = Column(String)

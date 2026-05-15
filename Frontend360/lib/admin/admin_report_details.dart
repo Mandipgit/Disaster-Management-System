@@ -83,7 +83,13 @@ class _AdminReportDetailScreenState extends State<AdminReportDetailScreen>
   @override
   void initState() {
     super.initState();
+    // Derive initial decision state from passed value or report status
     _decisionState = widget.initialDecisionState;
+    try {
+      if (widget.report.status.toLowerCase() == 'verified') {
+        _decisionState = 'verified';
+      }
+    } catch (_) {}
 
     // Card entrance animation
     _cardController = AnimationController(
@@ -140,14 +146,18 @@ class _AdminReportDetailScreenState extends State<AdminReportDetailScreen>
     try {
       final api = ApiService();
       // Handle mock UI report ID (e.g. "RPT-00420") vs actual API ID logic
-      final intId = int.tryParse(widget.report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
-      
+      final intId = int.tryParse(
+        widget.report.reportId.replaceAll(RegExp(r'[^0-9]'), ''),
+      );
+
       if (intId != null) {
         await api.put('/admin/reports/$intId/verify');
       }
-      
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Verified successfully')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Verified successfully')));
         _decisionController.reverse().then((_) {
           setState(() => _decisionState = 'verified');
           _decisionController.forward();
@@ -155,7 +165,9 @@ class _AdminReportDetailScreenState extends State<AdminReportDetailScreen>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed: $e')));
       }
     }
   }
