@@ -17,7 +17,9 @@ disenv/
 
 # Environment Variables
 .env
-.env.*
+.env.local
+.env.production
+.env.development
 
 # Database
 *.db
@@ -86,4 +88,7 @@ Thumbs.db
 coverage/
 *.cover
 *.pid
+
+# Node dependencies
+node_modules/
 
