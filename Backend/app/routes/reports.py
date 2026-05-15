@@ -195,8 +195,16 @@ def create_report(
 
 @router.get("/", response_model=List[dict])
 def get_reports(db: Session = Depends(get_db)):
-    incidents = db.query(Incident).options(joinedload(Incident.reports).joinedload(Report.user)).all()
-    return [serialize_incident(inc) for inc in incidents]
+    incidents = (
+        db.query(Incident)
+        .options(joinedload(Incident.reports).joinedload(Report.user))
+        .all()
+    )
+    # Only return incidents that still have at least one linked report.
+    # Incidents with no reports are orphaned rows left behind when reports
+    # are deleted directly from the database.
+    return [serialize_incident(inc) for inc in incidents if inc.reports]
+
 
 @router.get("/verified", response_model=List[dict])
 def get_verified_reports(db: Session = Depends(get_db)):

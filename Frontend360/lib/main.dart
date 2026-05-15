@@ -4,7 +4,10 @@ import 'package:disaster360/providers/auth_provider.dart';
 import 'package:disaster360/providers/report_provider.dart';
 import 'package:disaster360/auth/auth_wrapper.dart';
 
-void main() {
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+Future<void> main() async {
+  await dotenv.load(fileName: ".env");
   runApp(
     MultiProvider(
       providers: [

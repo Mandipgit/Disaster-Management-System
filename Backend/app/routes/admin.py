@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from ..database import get_db
+from ..models.incident import Incident
 from ..models.report import Report
 from ..models.user import User
 from .auth import get_current_admin
@@ -98,6 +99,8 @@ def admin_update_report(
 
 # ======================
 # Verify Report (approved admin only)
+# The frontend sends the INCIDENT id (displayed as RPT-{incident.id}).
+# We look up the Incident and mark it + all its linked Reports as Verified.
 # ======================
 @router.put("/reports/{report_id}/verify")
 def verify_report(
@@ -105,40 +108,55 @@ def verify_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin)
 ):
-    report = db.query(Report).filter(Report.id == report_id).first()
-    if not report:
+    # report_id here is actually the incident id sent from the frontend
+    incident = db.query(Incident).filter(Incident.id == report_id).first()
+    if not incident:
         raise HTTPException(status_code=404, detail="Report not found")
 
-    # Mark report as verified and also update the linked incident
-    report.status = "Verified"
-    try:
-        report.verified = True
-    except Exception:
-        pass
+    # Mark the incident as verified
+    incident.status = "Verified"
+    incident.verified = True
 
-    # Also mark other reports in the same incident as verified
-    try:
-        incident_id = report.incident_id
-        related_reports = db.query(Report).filter(Report.incident_id == incident_id).all()
-        for rr in related_reports:
-            rr.verified = True
-            rr.status = "Verified"
-    except Exception:
-        pass
-
-    if hasattr(report, 'incident') and report.incident:
-        try:
-            report.incident.status = "Verified"
-            report.incident.verified = True
-        except Exception:
-            pass
+    # Mark every linked report as verified
+    for r in incident.reports:
+        r.status = "Verified"
+        r.verified = True
 
     db.commit()
-    db.refresh(report)
+    db.refresh(incident)
 
     return {
-        "message": f"Report {report_id} verified successfully",
+        "message": f"Incident {report_id} verified successfully",
         "verified_by": current_user.email
+    }
+
+
+# ======================
+# Unverify Report (undo a mistaken verification)
+# ======================
+@router.put("/reports/{report_id}/unverify")
+def unverify_report(
+    report_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    incident = db.query(Incident).filter(Incident.id == report_id).first()
+    if not incident:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    incident.status = "Pending"
+    incident.verified = False
+
+    for r in incident.reports:
+        r.status = "Pending"
+        r.verified = False
+
+    db.commit()
+    db.refresh(incident)
+
+    return {
+        "message": f"Incident {report_id} unverified (reset to Pending)",
+        "unverified_by": current_user.email
     }
 
 

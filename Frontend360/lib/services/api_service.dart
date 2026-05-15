@@ -3,10 +3,12 @@ import 'dart:io' show Platform;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 class ApiService {
   // Configured to the PC's actual local IPv4 address so physical Android devices on Wi-Fi can connect
   static String get baseUrl {
-    return 'http://127.0.0.1:8000'; // Using the latest IPv4 from terminal logs
+    return dotenv.env['API_BASE_URL'] ?? 'http://127.0.0.1:8000';
   }
 
   Future<Map<String, String>> _getHeaders() async {

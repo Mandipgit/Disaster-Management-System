@@ -97,6 +97,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     });
     _pageEntryCtrl.reset();
     _pageEntryCtrl.forward();
+    // Re-fetch reports whenever the Reports tab becomes active
+    // so the list is always in sync with the database.
+    if (index == 1) {
+      context.read<ReportProvider>().fetchReports();
+    }
   }
 
   @override

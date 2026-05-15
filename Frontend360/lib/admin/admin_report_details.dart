@@ -1,6 +1,8 @@
 import 'package:disaster360/colors.dart';
 import 'package:flutter/material.dart';
 import 'package:disaster360/services/api_service.dart';
+import 'package:provider/provider.dart';
+import 'package:disaster360/providers/report_provider.dart';
 
 // ─── Data Model ───────────────────────────────────────────────────────────────
 
@@ -238,6 +240,65 @@ class _AdminReportDetailScreenState extends State<AdminReportDetailScreen>
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
+  }
+
+  void _onUnverify() async {
+    final intId = int.tryParse(
+      widget.report.reportId.replaceAll(RegExp(r'[^0-9]'), ''),
+    );
+    if (intId == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.bgSurface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('Undo Verification?',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+        content: const Text(
+          'This will reset the report back to Pending status.',
+          style: TextStyle(color: Colors.white54),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white38)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Unverify',
+                style: TextStyle(color: AppColors.warning, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await context.read<ReportProvider>().unverifyReport(intId);
+      if (!mounted) return;
+      _decisionController.reverse().then((_) {
+        setState(() => _decisionState = 'pending');
+        _decisionController.forward();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${widget.report.reportId} reset to Pending.'),
+          backgroundColor: AppColors.warning,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Unverify failed: $e'),
+            backgroundColor: AppColors.danger,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      }
+    }
   }
 
   void _showRejectionBottomSheet() {
@@ -816,6 +877,15 @@ class _AdminReportDetailScreenState extends State<AdminReportDetailScreen>
           color: AppColors.orange,
           filled: true,
           onTap: _onAssign,
+        ),
+        const SizedBox(height: 10),
+        _ActionButton(
+          fullWidth: true,
+          label: 'Undo Verification',
+          icon: Icons.undo_rounded,
+          color: AppColors.warning,
+          filled: false,
+          onTap: _onUnverify,
         ),
       ],
     );
