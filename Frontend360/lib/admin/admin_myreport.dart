@@ -151,23 +151,35 @@ class _AdminReportsScreenState extends State<AdminReportsScreen>
 
               // Body
               Expanded(
-                child:
-                    _filteredReports.isEmpty
-                        ? const Center(
-                          child: Text(
-                            'No reports found.',
-                            style: TextStyle(
-                              color: Colors.white38,
-                              fontSize: 14,
+                child: RefreshIndicator(
+                  color: AppColors.orange,
+                  backgroundColor: AppColors.bgSurface,
+                  onRefresh: () =>
+                      context.read<ReportProvider>().fetchReports(),
+                  child:
+                      _filteredReports.isEmpty
+                          ? const SingleChildScrollView(
+                            physics: AlwaysScrollableScrollPhysics(),
+                            child: SizedBox(
+                              height: 300,
+                              child: Center(
+                                child: Text(
+                                  'No reports found.',
+                                  style: TextStyle(
+                                    color: Colors.white38,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
                             ),
+                          )
+                          : _ReportBody(
+                            reports: _filteredReports,
+                            cols: cols,
+                            hPad: hPad,
+                            onTap: _navigateToDetail,
                           ),
-                        )
-                        : _ReportBody(
-                          reports: _filteredReports,
-                          cols: cols,
-                          hPad: hPad,
-                          onTap: _navigateToDetail,
-                        ),
+                ),
               ),
             ],
           ),
@@ -175,6 +187,7 @@ class _AdminReportsScreenState extends State<AdminReportsScreen>
       ),
     );
   }
+
 
   void _navigateToDetail(AdminReportData report) {
     Navigator.push(
@@ -512,15 +525,41 @@ class _AdminReportCardState extends State<_AdminReportCard> {
   String _cardState = 'pending';
   bool _hovered = false;
 
-  void _onVerify() => Navigator.push(
-    context,
-    _pageRoute(
-      AdminReportDetailScreen(
-        report: widget.report,
-        initialDecisionState: 'verified',
-      ),
-    ),
-  );
+  void _onVerify() async {
+    final intId = int.tryParse(
+      widget.report.reportId.replaceAll(RegExp(r'[^0-9]'), ''),
+    );
+    if (intId == null) return;
+    try {
+      await context.read<ReportProvider>().verifyReport(intId);
+      if (mounted) setState(() => _cardState = 'verified');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${widget.report.reportId} verified.'),
+            backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Verify failed: $e'),
+            backgroundColor: AppColors.danger,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    }
+  }
 
   void _onReject() {
     final TextEditingController rc = TextEditingController();

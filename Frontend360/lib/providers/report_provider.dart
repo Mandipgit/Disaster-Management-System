@@ -99,6 +99,17 @@ class ReportProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> deleteReport(int reportId) async {
+    try {
+      await _apiService.delete('/reports/$reportId');
+      _reports.removeWhere((r) => r.id == reportId);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error deleting report: $e');
+      rethrow;
+    }
+  }
+
   Future<void> verifyReport(int reportId) async {
     try {
       await _apiService.put('/admin/reports/$reportId/verify');
@@ -125,6 +136,36 @@ class ReportProvider extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('Error verifying report: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> unverifyReport(int reportId) async {
+    try {
+      await _apiService.put('/admin/reports/$reportId/unverify');
+
+      final index = _reports.indexWhere((r) => r.id == reportId);
+      if (index != -1) {
+        _reports[index] = ReportModel(
+          id: _reports[index].id,
+          userId: _reports[index].userId,
+          disasterType: _reports[index].disasterType,
+          title: _reports[index].title,
+          description: _reports[index].description,
+          latitude: _reports[index].latitude,
+          longitude: _reports[index].longitude,
+          severity: _reports[index].severity,
+          status: 'Pending',
+          verified: false,
+          likes: _reports[index].likes,
+          dislikes: _reports[index].dislikes,
+          createdAt: _reports[index].createdAt,
+          submissions: _reports[index].submissions,
+        );
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Error unverifying report: $e');
       rethrow;
     }
   }
