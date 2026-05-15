@@ -1,0 +1,44 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run Backend",
+            "type": "shell",
+            "command": "cd Backend; .\\myenv\\Scripts\\activate; uvicorn app.main2:app2 --reload --host 0.0.0.0",
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "python",
+                "pattern": { "regexp": "." },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": ".*",
+                    "endsPattern": ".*"
+                }
+            },
+            "presentation": {
+                "group": "server",
+                "reveal": "always",
+                "panel": "dedicated"
+            }
+        },
+        {
+            "label": "Run Frontend",
+            "type": "shell",
+            "command": "cd Frontend360; flutter run",
+            "presentation": {
+                "group": "client",
+                "reveal": "always",
+                "panel": "dedicated"
+            }
+        },
+        {
+            "label": "🔥 Run Everything 🔥",
+            "dependsOn": [
+                "Run Backend",
+                "Run Frontend"
+            ],
+            "dependsOrder": "parallel",
+            "problemMatcher": []
+        }
+    ]
+}

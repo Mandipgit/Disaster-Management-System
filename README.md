@@ -79,6 +79,21 @@ Follow these instructions to get a copy of the project up and running on your lo
 
 ---
 
+## 🚀 Running the Full Stack (VS Code)
+
+If you are using Visual Studio Code, you don't need to manually open multiple terminals to run the frontend and backend separately. 
+
+A custom VS Code Task is included to start both simultaneously in a split terminal:
+
+1. Open VS Code.
+2. Press `Ctrl + Shift + P` (or `Cmd + Shift + P` on Mac).
+3. Type **Run Task** and press Enter.
+4. Select **🔥 Run Everything 🔥**.
+
+VS Code will automatically open two terminal panels side-by-side, activate the backend virtual environment, start the FastAPI server on `0.0.0.0`, and launch the Flutter app!
+
+---
+
 ## 📁 Project Structure
 
 *   `/Backend`: FastAPI source code, database models, and API routes.

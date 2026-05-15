@@ -73,7 +73,9 @@ Frontend360/build/
 # ===============================
 # IDE / Editor / System
 # ===============================
-.vscode/
+.vscode/*
+!.vscode/tasks.json
+!.vscode/launch.json
 .idea/
 *.iml
 *.ipr
