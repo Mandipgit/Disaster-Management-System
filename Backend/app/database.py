@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from app.config import settings
 
 # Replace YOUR_PASSWORD with your PostgreSQL password
 DATABASE_URL = "postgresql://postgres:sushantsql@localhost:5432/disaster360_db"

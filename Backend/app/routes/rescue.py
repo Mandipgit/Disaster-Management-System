@@ -86,7 +86,7 @@ def acknowledge_report(
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
 
-    if report.status != "Verified":
+    if report.status != "Verified": # type: ignore
         raise HTTPException(
             status_code=400,
             detail="Only verified reports can be acknowledged"
@@ -170,7 +170,7 @@ def update_rescue_status(
             detail="Report must be acknowledged before updating status"
         )
 
-    rescue_update.status = payload.status
+    rescue_update.status = payload.status # type: ignore
     db.commit()
     db.refresh(rescue_update)
 

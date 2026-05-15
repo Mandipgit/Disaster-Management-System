@@ -148,7 +148,7 @@ def get_current_user(
         raise HTTPException(status_code=404, detail="User not found")
 
     # ✅ Double safety — blocks admin if revoked in DB after token was issued
-    if user.role == "admin" and not is_admin_approved(user):
+    if user.role == "admin" and not is_admin_approved(user): # type: ignore
         raise HTTPException(
             status_code=403,
             detail="Admin access has been revoked. Contact system administrator."

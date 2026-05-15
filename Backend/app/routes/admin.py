@@ -74,17 +74,17 @@ def admin_update_report(
 
     # Only update fields that were actually sent
     if payload.disaster_type is not None:
-        report.disaster_type = payload.disaster_type
+        report.disaster_type = payload.disaster_type # type: ignore
     if payload.title is not None:
-        report.title = payload.title
+        report.title = payload.title # type: ignore
     if payload.description is not None:
         report.description = payload.description # type: ignore
     if payload.latitude is not None:
-        report.latitude = payload.latitude
+        report.latitude = payload.latitude # type: ignore
     if payload.longitude is not None:
-        report.longitude = payload.longitude
+        report.longitude = payload.longitude # type: ignore
     if payload.severity is not None:
-        report.severity = payload.severity
+        report.severity = payload.severity # type: ignore
 
     db.commit()
     db.refresh(report)
@@ -170,7 +170,7 @@ def update_report_status(
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
 
-    report.status = payload.status
+    report.status = payload.status # type: ignore
     db.commit()
     db.refresh(report)
 
