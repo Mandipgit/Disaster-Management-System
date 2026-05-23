@@ -1,11 +1,11 @@
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:disaster360/providers/auth_provider.dart';
 import 'package:disaster360/auth/auth_wrapper.dart';
 import 'package:disaster360/colors.dart';
 import 'package:disaster360/main.dart';
 import 'package:disaster360/services/feedback.dart';
-import 'package:disaster360/services/offline_support.dart';
-import 'package:flutter/material.dart';
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  ADMIN PROFILE SCREEN — Disaster360
@@ -317,7 +317,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen>
               flex: 4,
               child: Column(
                 children: [
-                  _buildAvatarAndName(),
+                  _buildAvatarAndName(context),
                   const SizedBox(height: 20),
                   _buildStatsRow(context),
                   const SizedBox(height: 16),
@@ -357,7 +357,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen>
       children: [
         _buildHeader(context),
         const SizedBox(height: 28),
-        _buildAvatarAndName(),
+        _buildAvatarAndName(context),
         const SizedBox(height: 20),
         _buildStatsRow(context),
         const SizedBox(height: 20),
@@ -403,7 +403,21 @@ class _AdminProfileScreenState extends State<AdminProfileScreen>
     );
   }
 
-  Widget _buildAvatarAndName() {
+  String _getInitials(String name) {
+    if (name.isEmpty) return "U";
+    var split = name.trim().split(' ');
+    if (split.length > 1) {
+      return '${split[0][0]}${split[1][0]}'.toUpperCase();
+    }
+    return name[0].toUpperCase();
+  }
+
+  Widget _buildAvatarAndName(BuildContext context) {
+    final user = context.watch<AuthProvider>().user;
+    final name = user?.fullName ?? 'Admin User';
+    final role = user?.role ?? 'Admin';
+    final initials = _getInitials(name);
+
     return Column(
       children: [
         Stack(
@@ -421,7 +435,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen>
               ),
               child: Center(
                 child: Text(
-                  _initials,
+                  initials,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 28,
@@ -448,7 +462,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen>
         ),
         const SizedBox(height: 14),
         Text(
-          _name,
+          name,
           style: const TextStyle(
             color: Colors.white,
             fontSize: 20,
@@ -462,8 +476,11 @@ class _AdminProfileScreenState extends State<AdminProfileScreen>
           spacing: 8,
           runSpacing: 6,
           children: [
-            _roleBadge('Administrator', AppColors.orange),
-            _roleBadge(_jurisdiction, AppColors.info),
+            _roleBadge(role.toUpperCase(), AppColors.orange),
+            _roleBadge(
+              user?.citizenshipIssueDistrict ?? 'Jurisdiction N/A',
+              AppColors.info,
+            ),
           ],
         ),
       ],
@@ -522,14 +539,15 @@ class _AdminProfileScreenState extends State<AdminProfileScreen>
   }
 
   Widget _buildInfoCard(BuildContext context) {
+    final user = context.watch<AuthProvider>().user;
     final rows = [
-      _InfoRow(label: 'Employee ID', value: _employeeId),
-      _InfoRow(label: 'Department', value: _department),
-      _InfoRow(label: 'Email', value: _email),
-      _InfoRow(label: 'Phone', value: _phone),
+      _InfoRow(label: 'Employee ID', value: user?.citizenshipNumber ?? 'N/A'),
+      _InfoRow(label: 'Department', value: 'Disaster Management Authority'),
+      _InfoRow(label: 'Email', value: user?.email ?? 'N/A'),
+      _InfoRow(label: 'Phone', value: user?.phone ?? 'N/A'),
       _InfoRow(
         label: 'Jurisdiction',
-        value: _jurisdiction,
+        value: user?.citizenshipIssueDistrict ?? 'N/A',
         valueColor: AppColors.info,
       ),
     ];
@@ -896,12 +914,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen>
             label: 'Provide Feedback',
             onTap: () => _showFeedbackPanel(context), // <-- call our new method
           ),
-          const Divider(height: 1, color: AppColors.border, indent: 56),
-          _HoverMenuTile(
-            icon: Icons.wifi_off_rounded,
-            label: 'Offline Support',
-            onTap: () => _showOfflineSupportPanel(context),
-          ),
+
           const Divider(height: 1, color: AppColors.border, indent: 56),
           _HoverMenuTile(
             icon: Icons.security_outlined,
@@ -1859,22 +1872,6 @@ class _AdminProfileScreenState extends State<AdminProfileScreen>
     }
   }
 
-  // ── Offline support panel ─────────────────────────────────────────────────────
-  void _showOfflineSupportPanel(BuildContext context) {
-    if (_BP.isWide(context)) {
-      // Tablet/Desktop: show as floating dialog
-      _showPanel(
-        context: context,
-        title: 'Offline Support',
-        sheetSize: 0.7,
-        content: const OfflineSupportScreen(isInDialog: true),
-      );
-    } else {
-      // Mobile: push full screen
-      Navigator.push(context, _fadeRoute(const OfflineSupportScreen()));
-    }
-  }
-
   // ── Sign out ───────────────────────────────────────────────────────────────
   void _showSignOutDialog(BuildContext context) {
     showDialog(
@@ -1908,13 +1905,13 @@ class _AdminProfileScreenState extends State<AdminProfileScreen>
                 label: 'Sign Out',
                 color: AppColors.danger,
                 onTap: () async {
-                    await context.read<AuthProvider>().logout();
-                    if (context.mounted) {
-                      Navigator.of(context).pushAndRemoveUntil(
-                        MaterialPageRoute(builder: (_) => const AuthWrapper()),
-                        (route) => false,
-                      );
-                    }
+                  await context.read<AuthProvider>().logout();
+                  if (context.mounted) {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (_) => const AuthWrapper()),
+                      (route) => false,
+                    );
+                  }
                 },
               ),
             ],
@@ -2660,3 +2657,4 @@ class _LogEntry {
     required this.level,
   });
 }
+

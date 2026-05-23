@@ -407,78 +407,11 @@ class _RescueHomeBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // ── Sample data ──────────────────────────────────────────────────────────
-    final activeMissions = [
-      _MissionData(
-        title: 'Flood — Koshi Bridge',
-        incidentId: 'INC-1042',
-        assignedAgo: '3 min ago',
-        location: '26.8065°N 87.2846°E',
-        distance: '3.2km away',
-        priority: 'Urgent',
-        status: 'Active',
-        type: 'Flood',
-        description:
-            'River Bagmati overflowed near the old bridge. Water level rising rapidly. Multiple homes at risk.',
-        lat: '26.8065°N',
-        lng: '87.2846°E',
-        reportId: 'RPT-1042',
-        photoCount: 2,
-      ),
-    ];
+    final activeMissions = <_MissionData>[];
 
-    final pendingMissions = [
-      _MissionData(
-        title: 'Landslide — Bhedetar Highway',
-        incidentId: 'INC-1039',
-        assignedAgo: '18 min ago',
-        location: '26.8700°N 87.2600°E',
-        distance: '6.1km away',
-        priority: 'High',
-        status: 'Pending',
-        type: 'Landslide',
-        description:
-            'Landslide blocking main highway near Bhedetar. Road completely impassable.',
-        lat: '26.8700°N',
-        lng: '87.2600°E',
-        reportId: 'RPT-1039',
-        photoCount: 3,
-      ),
-      _MissionData(
-        title: 'Flood — Itahari Ward 3',
-        incidentId: 'INC-1036',
-        assignedAgo: '35 min ago',
-        location: '26.4650°N 87.2800°E',
-        distance: '11.4km away',
-        priority: 'Medium',
-        status: 'Pending',
-        type: 'Flood',
-        description:
-            'Flooding near Itahari bus park. Road submerged by 60cm. Stranded residents reported.',
-        lat: '26.4650°N',
-        lng: '87.2800°E',
-        reportId: 'RPT-1036',
-        photoCount: 1,
-      ),
-    ];
+    final pendingMissions = <_MissionData>[];
 
-    final completedMissions = [
-      _MissionData(
-        title: 'Road Block — Bypass',
-        incidentId: 'INC-1031',
-        assignedAgo: 'Feb 14 · 08:30 AM',
-        location: '26.7900°N 87.2700°E',
-        distance: '2.0km away',
-        priority: 'Low',
-        status: 'Controlled',
-        type: 'Road Block',
-        description:
-            'Debris from overnight storm fully cleared. Traffic flow restored.',
-        lat: '26.7900°N',
-        lng: '87.2700°E',
-        reportId: 'RPT-1031',
-        photoCount: 2,
-      ),
-    ];
+    final completedMissions = <_MissionData>[];
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
@@ -1523,3 +1456,4 @@ class _MissionData {
     required this.photoCount,
   });
 }
+

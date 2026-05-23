@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:disaster360/services/session_service.dart';
 
 class ApiService {
   // Configured to the PC's actual local IPv4 address so physical Android devices on Wi-Fi can connect
@@ -11,19 +12,25 @@ class ApiService {
     return dotenv.env['API_BASE_URL'] ?? 'http://127.0.0.1:8000';
   }
 
-  Future<Map<String, String>> _getHeaders() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('auth_token');
-    return {
+  Future<Map<String, String>> _getHeaders({Map<String, String>? customHeaders}) async {
+    final token = SessionService().token;
+    final headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
       if (token != null) 'Authorization': 'Bearer $token',
     };
+    if (customHeaders != null) {
+      headers.addAll(customHeaders);
+    }
+    return headers;
   }
 
-  Future<dynamic> get(String endpoint) async {
+  Future<dynamic> get(String endpoint, {Map<String, String>? headers}) async {
     final uri = Uri.parse('$baseUrl$endpoint');
-    final response = await http.get(uri, headers: await _getHeaders());
+    final response = await http.get(uri, headers: await _getHeaders(customHeaders: headers));
     return _handleResponse(response);
   }
 

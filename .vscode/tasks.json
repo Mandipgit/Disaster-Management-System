@@ -8,7 +8,9 @@
             "isBackground": true,
             "problemMatcher": {
                 "owner": "python",
-                "pattern": { "regexp": "." },
+                "pattern": {
+                    "regexp": "."
+                },
                 "background": {
                     "activeOnStart": true,
                     "beginsPattern": ".*",
@@ -38,6 +40,10 @@
                 "Run Frontend"
             ],
             "dependsOrder": "parallel",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
             "problemMatcher": []
         }
     ]

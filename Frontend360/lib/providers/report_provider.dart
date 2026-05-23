@@ -14,6 +14,7 @@ class ReportModel {
   final bool verified;
   int likes;
   int dislikes;
+  String? userReaction;
   final String createdAt;
   final List<dynamic> submissions;
 
@@ -30,6 +31,7 @@ class ReportModel {
     this.verified = false,
     required this.likes,
     required this.dislikes,
+    this.userReaction,
     required this.createdAt,
     this.submissions = const [],
   });
@@ -49,6 +51,7 @@ class ReportModel {
       verified: verified,
       likes: json['likes'] ?? 0,
       dislikes: json['dislikes'] ?? 0,
+      userReaction: json['user_reaction'],
       createdAt: json['created_at'] ?? '',
       submissions: json['submissions'] ?? [],
     );
@@ -87,11 +90,13 @@ class ReportProvider extends ChangeNotifier {
       );
       final newLikes = response['likes'];
       final newDislikes = response['dislikes'];
+      final newReaction = response['user_reaction'];
 
       final index = _reports.indexWhere((r) => r.id == reportId);
       if (index != -1) {
         _reports[index].likes = newLikes;
         _reports[index].dislikes = newDislikes;
+        _reports[index].userReaction = newReaction;
         notifyListeners();
       }
     } catch (e) {

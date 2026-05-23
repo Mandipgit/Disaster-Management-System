@@ -175,7 +175,15 @@ class _CitizenHomeScreenState extends State<CitizenHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
-      body: _getScreenForNav(),
+      body: IndexedStack(
+        index: _activeNav,
+        children: [
+          _buildHomeTab(),
+          const CitizenMyReportsScreen(),
+          const CitizenRiskMapScreen(),
+          const CitizenProfileScreen(),
+        ],
+      ),
       bottomNavigationBar: _buildBottomNav(context),
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 20),
@@ -197,41 +205,37 @@ class _CitizenHomeScreenState extends State<CitizenHomeScreen> {
     );
   }
 
-  Widget _getScreenForNav() {
-    switch (_activeNav) {
-      case 0:
-        // Home screen: includes header + scrollable content
-        return Column(
-          children: [
-            SafeArea(bottom: false, child: _buildHeader()),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 20,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildStatCards(),
-                    const SizedBox(height: 28),
-                    _buildFilterAndSortButtons(context),
-                    _buildReportCardsSection(context),
-                  ],
-                ),
+  Widget _buildHomeTab() {
+    return Column(
+      children: [
+        SafeArea(bottom: false, child: _buildHeader()),
+        Expanded(
+          child: RefreshIndicator(
+            color: AppColors.orange,
+            backgroundColor: AppColors.bgSurface,
+            onRefresh: () async {
+              await context.read<ReportProvider>().fetchReports();
+            },
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 20,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildStatCards(),
+                  const SizedBox(height: 28),
+                  _buildFilterAndSortButtons(context),
+                  _buildReportCardsSection(context),
+                ],
               ),
             ),
-          ],
-        );
-      case 1:
-        return const CitizenMyReportsScreen();
-      case 2:
-        return const CitizenRiskMapScreen();
-      case 3:
-        return const CitizenProfileScreen();
-      default:
-        return const SizedBox();
-    }
+          ),
+        ),
+      ],
+    );
   }
 
   // ── FIXED HEADER (only shown on Home screen) ─────────────────────────────────
@@ -256,7 +260,7 @@ class _CitizenHomeScreenState extends State<CitizenHomeScreen> {
               ),
               const SizedBox(height: 2),
               Text(
-                'Good morning, Amit',
+                'Namaste, ${context.watch<AuthProvider>().user?.fullName ?? 'Citizen'}',
                 style: TextStyle(
                   color: Colors.white.withOpacity(0.65),
                   fontSize: 14,
@@ -1116,20 +1120,9 @@ class _ReportCardWidgetState extends State<_ReportCard>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Top row: ID + Status + Date ──────────────────────────
+                // ── Top row: Status + Date ──────────────────────────
                 Row(
                   children: [
-                    Text(
-                      '#${report.id.toString()}',
-                      style: const TextStyle(
-                        color: Colors.white54,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'monospace',
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
                     _StatusBadge(status: report.status),
                     const Spacer(),
                     Text(
@@ -1182,26 +1175,7 @@ class _ReportCardWidgetState extends State<_ReportCard>
                 ),
                 const SizedBox(height: 3),
 
-                // ── Location ─────────────────────────────────────────────
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.location_on_outlined,
-                      color: Colors.white38,
-                      size: 13,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      ", ",
-                      style: const TextStyle(
-                        color: Colors.white54,
-                        fontSize: 13,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
+
 
                 // ── Description ──────────────────────────────────────────
                 Text(
@@ -1262,7 +1236,7 @@ class _ReportCardWidgetState extends State<_ReportCard>
                         icon: Icons.thumb_up_alt_outlined,
                         activeIcon: Icons.thumb_up_alt_rounded,
                         color: AppColors.success,
-                        active: false,
+                        active: report.userReaction == 'LIKE',
                         onTap: widget.onUpvote,
                       ),
                     ),
@@ -1273,7 +1247,7 @@ class _ReportCardWidgetState extends State<_ReportCard>
                         icon: Icons.thumb_down_alt_outlined,
                         activeIcon: Icons.thumb_down_alt_rounded,
                         color: AppColors.danger,
-                        active: false,
+                        active: report.userReaction == 'DISLIKE',
                         onTap: widget.onDownvote,
                       ),
                     ),
@@ -1406,16 +1380,7 @@ class _ReportCardWidgetState extends State<_ReportCard>
   }
 
   String _formatTime(String raw) {
-    try {
-      final dt = DateTime.parse(raw);
-      // Rough formatting for display
-      final diff = DateTime.now().difference(dt);
-      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-      if (diff.inHours < 24) return '${diff.inHours}h ago';
-      return '${diff.inDays}d ago';
-    } catch (_) {
-      return 'Just now';
-    }
+    return _relativeDate(raw);
   }
 
   void _showNestedReportDetails(dynamic sub, ReportModel mainReport) {
@@ -1641,30 +1606,24 @@ class _ReportCardWidgetState extends State<_ReportCard>
 
   String _relativeDate(String dateStr) {
     try {
-      final parts = dateStr.split(' ');
-      if (parts.length < 3) return dateStr;
-      const monthMap = {
-        'Jan': 1,
-        'Feb': 2,
-        'Mar': 3,
-        'Apr': 4,
-        'May': 5,
-        'Jun': 6,
-        'Jul': 7,
-        'Aug': 8,
-        'Sep': 9,
-        'Oct': 10,
-        'Nov': 11,
-        'Dec': 12,
-      };
-      final month = monthMap[parts[0]] ?? 1;
-      final day = int.parse(parts[1].replaceAll(',', ''));
-      final year = int.parse(parts[2]);
-      final dt = DateTime(year, month, day);
-      final diff = DateTime.now().difference(dt);
-      if (diff.inDays == 0) return 'Today';
-      if (diff.inDays == 1) return 'Yesterday';
-      return '${diff.inDays}d ago';
+      final dt = DateTime.parse(dateStr).toLocal();
+      final now = DateTime.now();
+      final diff = now.difference(dt);
+
+      if (diff.inHours < 1) {
+        if (diff.inMinutes < 1) return 'Just now';
+        return '${diff.inMinutes} min ago';
+      } else if (diff.inHours < 24) {
+        return '${diff.inHours} hours ago';
+      } else if (diff.inDays < 30) {
+        return '${diff.inDays} days ago';
+      } else if (diff.inDays < 365) {
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        return '${monthNames[dt.month - 1]} ${dt.day}';
+      } else {
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        return '${monthNames[dt.month - 1]} ${dt.day}, ${dt.year}';
+      }
     } catch (_) {
       return dateStr;
     }

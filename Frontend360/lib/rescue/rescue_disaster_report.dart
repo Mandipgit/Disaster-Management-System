@@ -38,38 +38,7 @@ class PostDisasterReportScreen extends StatefulWidget {
 class _PostDisasterReportScreenState extends State<PostDisasterReportScreen>
     with SingleTickerProviderStateMixin {
   // ── Completed tasks (same data as rescue_tasks_screen, filtered) ───────────
-  final List<RescueTask> _completedTasks = [
-    RescueTask(
-      taskId: 'TSK-00389',
-      status: TaskStatus.completed,
-      type: 'Landslide',
-      location: 'Dharan-7 Hill Area',
-      description:
-          'Landslide cleared. Road access restored. All residents accounted for. Minor infrastructure damage reported.',
-      assignedAgo: '6 hrs ago',
-      severityLevel: 2,
-      verifiedByAdmin: 'Sushila Rai',
-      photoCount: 4,
-      lat: '26.8120°N',
-      lng: '87.2700°E',
-      reportId: 'RPT-00389',
-    ),
-    RescueTask(
-      taskId: 'TSK-00371',
-      status: TaskStatus.completed,
-      type: 'Road Block',
-      location: 'Biratnagar Highway',
-      description:
-          'Debris from overnight storm fully cleared. Traffic flow restored. No casualties reported. Mission closed.',
-      assignedAgo: '1 day ago',
-      severityLevel: 1,
-      verifiedByAdmin: 'Binod Karki',
-      photoCount: 3,
-      lat: '26.4500°N',
-      lng: '87.2700°E',
-      reportId: 'RPT-00371',
-    ),
-  ];
+  final List<RescueTask> _completedTasks = [];
 
   // ── State ──────────────────────────────────────────────────────────────────
   RescueTask? _selectedTask;
@@ -955,3 +924,4 @@ class _MiniTag extends StatelessWidget {
     );
   }
 }
+

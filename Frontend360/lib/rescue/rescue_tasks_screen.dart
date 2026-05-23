@@ -35,98 +35,7 @@ class _RescueTasksScreenState extends State<RescueTasksScreen>
   final List<String> _filters = ['All', 'Active', 'Pending', 'Completed'];
 
   // ── Sample task data ───────────────────────────────────────────────────────
-  final List<RescueTask> _allTasks = [
-    RescueTask(
-      taskId: 'TSK-00420',
-      status: TaskStatus.active,
-      type: 'Flood',
-      location: 'Ward 5, Dharan',
-      description:
-          'River Bagmati overflowed near the old bridge. Water level rising rapidly. Multiple homes at risk. Immediate rescue needed.',
-      assignedAgo: '10 min ago',
-      severityLevel: 5,
-      verifiedByAdmin: 'Rajesh Kumar',
-      photoCount: 2,
-      lat: '26.8065°N',
-      lng: '87.2846°E',
-      reportId: 'RPT-00420',
-    ),
-    RescueTask(
-      taskId: 'TSK-00415',
-      status: TaskStatus.active,
-      type: 'Fire',
-      location: 'Hattisar Market, Itahari',
-      description:
-          'Large fire at Hattisar market. Multiple stalls engulfed. Civilians evacuating. Urgent response required.',
-      assignedAgo: '25 min ago',
-      severityLevel: 4,
-      verifiedByAdmin: 'Priya Sharma',
-      photoCount: 3,
-      lat: '26.4650°N',
-      lng: '87.2800°E',
-      reportId: 'RPT-00415',
-    ),
-    RescueTask(
-      taskId: 'TSK-00412',
-      status: TaskStatus.pending,
-      type: 'Landslide',
-      location: 'Bhedetar, Highway',
-      description:
-          'Landslide blocking main highway near Bhedetar. Road completely impassable. Debris removal team needed.',
-      assignedAgo: '1 hr ago',
-      severityLevel: 3,
-      verifiedByAdmin: 'Rajesh Kumar',
-      photoCount: 2,
-      lat: '26.8700°N',
-      lng: '87.2600°E',
-      reportId: 'RPT-00412',
-    ),
-    RescueTask(
-      taskId: 'TSK-00408',
-      status: TaskStatus.pending,
-      type: 'Flood',
-      location: 'Itahari, Ward 3',
-      description:
-          'Flooding near Itahari bus park. Road submerged by 60cm. Stranded residents reported. Team en route.',
-      assignedAgo: '2 hrs ago',
-      severityLevel: 3,
-      verifiedByAdmin: 'Deepak Thapa',
-      photoCount: 3,
-      lat: '26.4660°N',
-      lng: '87.2820°E',
-      reportId: 'RPT-00408',
-    ),
-    RescueTask(
-      taskId: 'TSK-00389',
-      status: TaskStatus.completed,
-      type: 'Landslide',
-      location: 'Dharan-7 Hill Area',
-      description:
-          'Landslide cleared. Road access restored. All residents accounted for. Minor infrastructure damage reported.',
-      assignedAgo: '6 hrs ago',
-      severityLevel: 2,
-      verifiedByAdmin: 'Sushila Rai',
-      photoCount: 4,
-      lat: '26.8120°N',
-      lng: '87.2700°E',
-      reportId: 'RPT-00389',
-    ),
-    RescueTask(
-      taskId: 'TSK-00371',
-      status: TaskStatus.completed,
-      type: 'Road Block',
-      location: 'Biratnagar Highway',
-      description:
-          'Debris from overnight storm fully cleared. Traffic flow restored. No casualties reported. Mission closed.',
-      assignedAgo: '1 day ago',
-      severityLevel: 1,
-      verifiedByAdmin: 'Binod Karki',
-      photoCount: 3,
-      lat: '26.4500°N',
-      lng: '87.2700°E',
-      reportId: 'RPT-00371',
-    ),
-  ];
+  final List<RescueTask> _allTasks = [];
 
   List<RescueTask> get _filteredTasks {
     List<RescueTask> list;
@@ -1969,3 +1878,4 @@ class RescueTask {
     required this.reportId,
   });
 }
+

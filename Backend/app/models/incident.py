@@ -23,3 +23,4 @@ class Incident(Base):
     sources = Column(Integer, default=1)
 
     reports = relationship("Report", back_populates="incident", cascade="all, delete-orphan")
+    reactions = relationship("ReportReaction", back_populates="incident", cascade="all, delete-orphan")
