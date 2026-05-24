@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:disaster360/providers/auth_provider.dart';
 import 'package:disaster360/colors.dart';
-import 'package:disaster360/auth/login_screen.dart';
+import 'package:nepali_date_picker/nepali_date_picker.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -14,35 +14,165 @@ class RegisterScreen extends StatefulWidget {
 class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _fullNameController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _citizenshipNumberController = TextEditingController();
+
+  String? _selectedDistrict;
+  NepaliDateTime? _selectedIssueDate;
+
   String _selectedRole = 'Citizen';
   final List<String> _roles = ['Citizen', 'Admin', 'Rescue'];
   bool _isLoading = false;
 
+  final List<String> _districts = [
+    'Bhojpur',
+    'Dhankuta',
+    'Ilam',
+    'Jhapa',
+    'Khotang',
+    'Morang',
+    'Okhaldhunga',
+    'Panchthar',
+    'Sankhuwasabha',
+    'Solukhumbu',
+    'Sunsari',
+    'Taplejung',
+    'Terhathum',
+    'Udayapur',
+    'Bara',
+    'Parsa',
+    'Rautahat',
+    'Sarlahi',
+    'Dhanusha',
+    'Mahottari',
+    'Siraha',
+    'Saptari',
+    'Bhaktapur',
+    'Dhading',
+    'Kathmandu',
+    'Kavrepalanchok',
+    'Lalitpur',
+    'Nuwakot',
+    'Rasuwa',
+    'Sindhupalchok',
+    'Baglung',
+    'Gorkha',
+    'Kaski',
+    'Lamjung',
+    'Manang',
+    'Mustang',
+    'Myagdi',
+    'Parbat',
+    'Syangja',
+    'Tanahun',
+    'Arghakhanchi',
+    'Banke',
+    'Bardiya',
+    'Dang',
+    'Gulmi',
+    'Kapilvastu',
+    'Nawalparasi East',
+    'Nawalparasi West',
+    'Palpa',
+    'Pyuthan',
+    'Rolpa',
+    'Rukum East',
+    'Rukum West',
+    'Rupandehi',
+    'Dolpa',
+    'Humla',
+    'Jumla',
+    'Kalikot',
+    'Mugu',
+    'Dailekh',
+    'Jajarkot',
+    'Surkhet',
+    'Achham',
+    'Baitadi',
+    'Bajhang',
+    'Bajura',
+    'Dadeldhura',
+    'Darchula',
+    'Doti',
+    'Kailali',
+    'Kanchanpur',
+  ]; // A sample of Nepal districts; you can expand this list.
+
+  Future<void> _pickDate() async {
+    final pickedDate = await showNepaliDatePicker(
+      context: context,
+      initialDate: NepaliDateTime.now(),
+      firstDate: NepaliDateTime(2000),
+      lastDate: NepaliDateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.dark().copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: AppColors.orange,
+              onPrimary: Colors.white,
+              surface: AppColors.bgSurface,
+              onSurface: Colors.white,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (pickedDate != null) {
+      setState(() => _selectedIssueDate = pickedDate);
+    }
+  }
+
   void _handleRegister() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
+    final fullName = _fullNameController.text.trim();
+    final phone = _phoneController.text.trim();
+    final citizenshipNumber = _citizenshipNumberController.text.trim();
 
-    if (email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all fields')),
-      );
+    if (email.isEmpty ||
+        password.isEmpty ||
+        fullName.isEmpty ||
+        phone.isEmpty ||
+        citizenshipNumber.isEmpty ||
+        _selectedDistrict == null ||
+        _selectedIssueDate == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please fill all fields')));
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      final msg = await context.read<AuthProvider>().register(email, password, _selectedRole);
-      
+      final msg = await context.read<AuthProvider>().register(
+        email,
+        password,
+        _selectedRole,
+        fullName: fullName,
+        phone: phone,
+        citizenshipNumber: citizenshipNumber,
+        citizenshipIssueDistrict: _selectedDistrict!,
+        citizenshipIssueDate:
+            _selectedIssueDate!.toDateTime().toIso8601String().split('T').first,
+      );
+
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: AppColors.success));
-      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), backgroundColor: AppColors.success),
+      );
+
       // Let AuthWrapper update the root UI, so pop the register_screen off the stack
       Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger),
+        SnackBar(
+          content: Text(e.toString()),
+          backgroundColor: AppColors.danger,
+        ),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -94,6 +224,118 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 16),
                 TextField(
+                  controller: _fullNameController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: 'Full Name',
+                    labelStyle: const TextStyle(color: Colors.white54),
+                    filled: true,
+                    fillColor: AppColors.bgSurface,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    prefixIcon: const Icon(Icons.person, color: Colors.white54),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _phoneController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: 'Phone Number',
+                    labelStyle: const TextStyle(color: Colors.white54),
+                    filled: true,
+                    fillColor: AppColors.bgSurface,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    prefixIcon: const Icon(Icons.phone, color: Colors.white54),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _citizenshipNumberController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: 'Citizenship Number',
+                    labelStyle: const TextStyle(color: Colors.white54),
+                    filled: true,
+                    fillColor: AppColors.bgSurface,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    prefixIcon: const Icon(Icons.badge, color: Colors.white54),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  initialValue: _selectedDistrict,
+                  dropdownColor: AppColors.bgSurface,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: 'Citizenship Issue District',
+                    labelStyle: const TextStyle(color: Colors.white54),
+                    filled: true,
+                    fillColor: AppColors.bgSurface,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.location_city,
+                      color: Colors.white54,
+                    ),
+                  ),
+                  items:
+                      _districts.map((String value) {
+                        return DropdownMenuItem<String>(
+                          value: value,
+                          child: Text(value),
+                        );
+                      }).toList(),
+                  onChanged: (newValue) {
+                    setState(() {
+                      _selectedDistrict = newValue;
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+                InkWell(
+                  onTap: _pickDate,
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: 'Citizenship Issue Date',
+                      labelStyle: const TextStyle(color: Colors.white54),
+                      filled: true,
+                      fillColor: AppColors.bgSurface,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      prefixIcon: const Icon(
+                        Icons.calendar_today,
+                        color: Colors.white54,
+                      ),
+                    ),
+                    child: Text(
+                      _selectedIssueDate == null
+                          ? 'Select Date'
+                          : '${_selectedIssueDate!.year}-${_selectedIssueDate!.month.toString().padLeft(2, '0')}-${_selectedIssueDate!.day.toString().padLeft(2, '0')}',
+                      style: TextStyle(
+                        color:
+                            _selectedIssueDate == null
+                                ? Colors.white54
+                                : Colors.white,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
                   controller: _passwordController,
                   obscureText: true,
                   style: const TextStyle(color: Colors.white),
@@ -112,26 +354,33 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const SizedBox(height: 24),
                 const Text(
                   'Select Role',
-                  style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 Wrap(
                   spacing: 10,
-                  children: _roles.map((role) {
-                    final isSelected = _selectedRole == role;
-                    return ChoiceChip(
-                      label: Text(
-                        role,
-                        style: TextStyle(color: isSelected ? Colors.white : Colors.white54),
-                      ),
-                      selected: isSelected,
-                      selectedColor: AppColors.orange,
-                      backgroundColor: AppColors.bgSurface,
-                      onSelected: (selected) {
-                        if (selected) setState(() => _selectedRole = role);
-                      },
-                    );
-                  }).toList(),
+                  children:
+                      _roles.map((role) {
+                        final isSelected = _selectedRole == role;
+                        return ChoiceChip(
+                          label: Text(
+                            role,
+                            style: TextStyle(
+                              color: isSelected ? Colors.white : Colors.white54,
+                            ),
+                          ),
+                          selected: isSelected,
+                          selectedColor: AppColors.orange,
+                          backgroundColor: AppColors.bgSurface,
+                          onSelected: (selected) {
+                            if (selected) setState(() => _selectedRole = role);
+                          },
+                        );
+                      }).toList(),
                 ),
                 const SizedBox(height: 32),
                 ElevatedButton(
@@ -143,16 +392,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                        )
-                      : const Text(
-                          'Register',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                        ),
+                  child:
+                      _isLoading
+                          ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                          : const Text(
+                            'Register',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
                 ),
                 const SizedBox(height: 24),
                 Row(
@@ -164,7 +421,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                     GestureDetector(
                       onTap: () {
-                          Navigator.of(context).popUntil((route) => route.isFirst);
+                        Navigator.of(
+                          context,
+                        ).popUntil((route) => route.isFirst);
                       },
                       child: const Text(
                         'Sign in',

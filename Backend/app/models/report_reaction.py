@@ -1,6 +1,10 @@
+# pyrefly: ignore [missing-import]
 from sqlalchemy import Column, Integer, ForeignKey, Enum, UniqueConstraint
+# pyrefly: ignore [missing-import]
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
+# pyrefly: ignore [missing-import]
+from sqlalchemy.orm import relationship
 from ..database import Base
 import enum
 
@@ -19,3 +23,5 @@ class ReportReaction(Base):
     __table_args__ = (
         UniqueConstraint('incident_id', 'user_id', name='uq_incident_user_reaction'),
     )
+
+    incident = relationship("Incident", back_populates="reactions")

@@ -7,8 +7,9 @@ from ..database import get_db
 from ..models.incident import Incident
 from ..models.report import Report
 from ..models.user import User
-from .auth import get_current_user
+from .auth import get_current_user, get_optional_current_user
 from ..models.report_embedding import ReportEmbedding
+from ..models.report_reaction import ReportReaction, ReactionType
 from google.genai import Client
 from google.genai import types
 from fastapi import APIRouter
@@ -70,7 +71,7 @@ def calculate_distance(lat1, lon1, lat2, lon2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
 
-def serialize_incident(inc):
+def serialize_incident(inc, current_user_id=None):
     submissions = []
     for r in inc.reports:
         user_name = r.user.full_name if (hasattr(r, "user") and r.user) else str(r.user_id)
@@ -85,6 +86,16 @@ def serialize_incident(inc):
             "title": inc.title,
             "verified": getattr(r, 'verified', False)
         })
+
+    likes = sum(1 for r in getattr(inc, 'reactions', []) if r.reaction_type.value == "LIKE")
+    dislikes = sum(1 for r in getattr(inc, 'reactions', []) if r.reaction_type.value == "DISLIKE")
+    user_reaction = None
+    if current_user_id:
+        for r in getattr(inc, 'reactions', []):
+            if str(r.user_id) == str(current_user_id):
+                user_reaction = r.reaction_type.value
+                break
+
     return {
         "id": inc.id,
         "user_id": submissions[0]["user_id"] if submissions else None,
@@ -100,6 +111,9 @@ def serialize_incident(inc):
         "created_at": inc.created_at,
         "updated_at": inc.updated_at,
         "sources": inc.sources or len(submissions),
+        "likes": likes,
+        "dislikes": dislikes,
+        "user_reaction": user_reaction,
         "submissions": submissions
     }
 
@@ -194,42 +208,41 @@ def create_report(
         }
 
 @router.get("/", response_model=List[dict])
-def get_reports(db: Session = Depends(get_db)):
+def get_reports(db: Session = Depends(get_db), current_user: User | None = Depends(get_optional_current_user)):
     incidents = (
         db.query(Incident)
-        .options(joinedload(Incident.reports).joinedload(Report.user))
+        .options(joinedload(Incident.reports).joinedload(Report.user), joinedload(Incident.reactions))
         .all()
     )
-    # Only return incidents that still have at least one linked report.
-    # Incidents with no reports are orphaned rows left behind when reports
-    # are deleted directly from the database.
-    return [serialize_incident(inc) for inc in incidents if inc.reports]
-
+    user_id = current_user.id if current_user else None
+    return [serialize_incident(inc, user_id) for inc in incidents if inc.reports]
 
 @router.get("/verified", response_model=List[dict])
-def get_verified_reports(db: Session = Depends(get_db)):
-    incidents = db.query(Incident).filter(Incident.status == "Verified").options(joinedload(Incident.reports).joinedload(Report.user)).all()
+def get_verified_reports(db: Session = Depends(get_db), current_user: User | None = Depends(get_optional_current_user)):
+    incidents = db.query(Incident).filter(Incident.status == "Verified").options(joinedload(Incident.reports).joinedload(Report.user), joinedload(Incident.reactions)).all()
     if not incidents: raise HTTPException(status_code=404, detail="No verified reports found")
-    return [serialize_incident(inc) for inc in incidents]
+    user_id = current_user.id if current_user else None
+    return [serialize_incident(inc, user_id) for inc in incidents]
 
 @router.get("/my-reports", response_model=List[dict])
 def get_my_reports(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     reports = db.query(Report).filter(Report.user_id == current_user.id).options(joinedload(Report.incident)).all()
     if not reports: raise HTTPException(status_code=404, detail="You have not posted any reports")
     inc_ids = list(set([r.incident_id for r in reports]))
-    incidents = db.query(Incident).filter(Incident.id.in_(inc_ids)).options(joinedload(Incident.reports).joinedload(Report.user)).all()
-    return [serialize_incident(inc) for inc in incidents]
+    incidents = db.query(Incident).filter(Incident.id.in_(inc_ids)).options(joinedload(Incident.reports).joinedload(Report.user), joinedload(Incident.reactions)).all()
+    return [serialize_incident(inc, current_user.id) for inc in incidents]
 
 @router.get("/nearby", response_model=List[dict])
-def get_nearby_reports(lat: float, lon: float, radius: float = 5.0, db: Session = Depends(get_db)):
-    incidents = db.query(Incident).options(joinedload(Incident.reports).joinedload(Report.user)).all()
+def get_nearby_reports(lat: float, lon: float, radius: float = 5.0, db: Session = Depends(get_db), current_user: User | None = Depends(get_optional_current_user)):
+    incidents = db.query(Incident).options(joinedload(Incident.reports).joinedload(Report.user), joinedload(Incident.reactions)).all()
     if not incidents: raise HTTPException(status_code=404, detail="No incidents found")
 
     nearby = []
+    user_id = current_user.id if current_user else None
     for inc in incidents:
         distance = calculate_distance(lat, lon, inc.latitude, inc.longitude)
         if distance <= radius:
-            data = serialize_incident(inc)
+            data = serialize_incident(inc, user_id)
             data["distance_km"] = round(distance, 2)
             nearby.append(data)
     if not nearby: raise HTTPException(status_code=404, detail=f"No incidents found within {radius} km")
@@ -257,10 +270,11 @@ def delete_own_report(report_id: int, db: Session = Depends(get_db), current_use
     return {"message": "Report deleted successfully"}
 
 @router.get("/{report_id}")
-def get_report(report_id: int, db: Session = Depends(get_db)):
-    inc = db.query(Incident).filter(Incident.id == report_id).options(joinedload(Incident.reports).joinedload(Report.user)).first()
+def get_report(report_id: int, db: Session = Depends(get_db), current_user: User | None = Depends(get_optional_current_user)):
+    inc = db.query(Incident).filter(Incident.id == report_id).options(joinedload(Incident.reports).joinedload(Report.user), joinedload(Incident.reactions)).first()
     if not inc: raise HTTPException(status_code=404, detail="Incident not found")
-    return serialize_incident(inc)
+    user_id = current_user.id if current_user else None
+    return serialize_incident(inc, user_id)
 
 @router.put("/{report_id}")
 def update_report(
@@ -282,3 +296,50 @@ def update_report(
     db.commit()
     db.refresh(inc)
     return {"message": "Incident updated", "report_id": inc.id}
+
+@router.post("/{report_id}/react")
+def react_to_report(
+    report_id: int, 
+    reaction: str, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    if reaction not in ["LIKE", "DISLIKE"]:
+        raise HTTPException(status_code=400, detail="Invalid reaction type")
+
+    inc = db.query(Incident).filter(Incident.id == report_id).first()
+    if not inc:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    existing_reaction = db.query(ReportReaction).filter(
+        ReportReaction.incident_id == report_id,
+        ReportReaction.user_id == current_user.id
+    ).first()
+
+    if existing_reaction:
+        if existing_reaction.reaction_type.value == reaction:
+            db.delete(existing_reaction)
+            db.commit()
+        else:
+            existing_reaction.reaction_type = ReactionType(reaction)
+            db.commit()
+    else:
+        new_reaction = ReportReaction(
+            incident_id=report_id,
+            user_id=current_user.id,
+            reaction_type=ReactionType(reaction)
+        )
+        db.add(new_reaction)
+        db.commit()
+
+    all_reactions = db.query(ReportReaction).filter(ReportReaction.incident_id == report_id).all()
+    likes = sum(1 for r in all_reactions if r.reaction_type.value == "LIKE")
+    dislikes = sum(1 for r in all_reactions if r.reaction_type.value == "DISLIKE")
+    
+    user_new_reaction = None
+    for r in all_reactions:
+        if str(r.user_id) == str(current_user.id):
+            user_new_reaction = r.reaction_type.value
+            break
+
+    return {"likes": likes, "dislikes": dislikes, "user_reaction": user_new_reaction}

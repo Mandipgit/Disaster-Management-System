@@ -36,6 +36,11 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
     role: str = "citizen"
+    full_name: str | None = None
+    phone: str | None = None
+    citizenship_number: str | None = None
+    citizenship_issue_district: str | None = None
+    citizenship_issue_date: str | None = None
 
 
 # ======================
@@ -55,7 +60,12 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
         email=payload.email,
         password_hash=hash_password(payload.password),
         role=payload.role.lower(),
-        is_admin=False,  # always False on registration, no exceptions
+        full_name=payload.full_name,
+        phone=payload.phone,
+        citizenship_number=payload.citizenship_number,
+        citizenship_issue_district=payload.citizenship_issue_district,
+        citizenship_issue_date=payload.citizenship_issue_date,  # Note: backend stores as Date but SQLAlchemy handles ISO 8601 string cast natively for Date columns in Postgres/SQLite
+        is_admin=False,  
         is_rescueteam=False
     )
 
@@ -130,8 +140,39 @@ def get_profile(
         "email": user.email,
         "role": user.role,
         "is_admin": user.is_admin,
-        "is_rescueteam": user.is_rescueteam
+        "is_rescueteam": user.is_rescueteam,
+        "full_name": user.full_name,
+        "phone": user.phone,
+        "citizenship_number": user.citizenship_number,
+        "citizenship_issue_date": str(user.citizenship_issue_date) if user.citizenship_issue_date else None,
+        "citizenship_issue_district": user.citizenship_issue_district
     }
+
+class ProfileUpdateRequest(BaseModel):
+    full_name: str | None = None
+    phone: str | None = None
+
+@router.post("/profile")
+def update_profile(
+    payload: ProfileUpdateRequest,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    token_payload = verify_access_token(token)
+    user = db.query(User).filter(User.id == uuid.UUID(token_payload.get("user_id"))).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if payload.full_name is not None:
+        user.full_name = payload.full_name
+    if payload.phone is not None:
+        user.phone = payload.phone
+    
+    db.commit()
+    db.refresh(user)
+    
+    return {"message": "Profile updated successfully"}
 
 
 # ======================
@@ -155,6 +196,23 @@ def get_current_user(
         )
 
     return user
+
+from fastapi import Request
+
+def get_optional_current_user(
+    request: Request,
+    db: Session = Depends(get_db)
+) -> User | None:
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header.split(" ")[1]
+    try:
+        payload = verify_access_token(token)
+        user = db.query(User).filter(User.id == uuid.UUID(payload.get("user_id"))).first()
+        return user
+    except Exception:
+        return None
 
 
 # ======================

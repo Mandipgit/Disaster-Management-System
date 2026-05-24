@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
-</dict>
-</plist>
+        <key>NSLocationWhenInUseUsageDescription</key>
+        <string>Disaster360 needs your location to accurately map disaster reports and alert rescue teams.</string>
+        <key>NSLocationAlwaysUsageDescription</key>
+        <string>Disaster360 needs your location in the background to provide live disaster proximity alerts.</string>
+        <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+        <string>Disaster360 requires continuous GPS tracking to monitor disaster zones near your active location.</string>

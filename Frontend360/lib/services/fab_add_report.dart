@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:disaster360/colors.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:disaster360/providers/report_provider.dart';
 import 'package:disaster360/services/api_service.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 
 class ReportDisasterScreen extends StatefulWidget {
   const ReportDisasterScreen({super.key});
@@ -13,7 +15,7 @@ class ReportDisasterScreen extends StatefulWidget {
 }
 
 class _ReportDisasterScreenState extends State<ReportDisasterScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   // ── Form state ─────────────────────────────────────────────────────────────
   String _selectedType = 'Flood';
   int _severityLevel = 0; // 0 = not selected
@@ -28,23 +30,135 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen>
   bool _isDuplicate = false; // true = merged (match), false = brand new
   int _duplicateStep = 0; // 0 to 3
 
+  // GPS Location State
+  Position? _currentPosition;
+  StreamSubscription<Position>? _positionStreamSubscription;
+  bool _locationServiceEnabled = false;
+  LocationPermission _locationPermission = LocationPermission.denied;
+
   late AnimationController _hourglassController;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _hourglassController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
     );
+    _checkLocationAndStartStream();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _positionStreamSubscription?.cancel();
     _hourglassController.dispose();
     _titleCtrl.dispose();
     _descCtrl.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkLocationAndStartStream();
+    }
+  }
+
+  Future<void> _checkLocationAndStartStream() async {
+    _locationServiceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!_locationServiceEnabled) {
+      // Ask user to enable it
+      _showLocationServiceDialog();
+      return;
+    }
+
+    _locationPermission = await Geolocator.checkPermission();
+    if (_locationPermission == LocationPermission.denied) {
+      _locationPermission = await Geolocator.requestPermission();
+      if (_locationPermission == LocationPermission.denied) {
+        if (!mounted) return;
+        _snack('Location permission denied.');
+        return;
+      }
+    }
+
+    if (_locationPermission == LocationPermission.deniedForever) {
+      if (!mounted) return;
+      _snack('Location permissions are permanently denied.');
+      return;
+    }
+
+    // Start stream
+    _startLocationStream();
+  }
+
+  void _startLocationStream() {
+    _positionStreamSubscription?.cancel();
+    const LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 5,
+    );
+
+    _positionStreamSubscription = Geolocator.getPositionStream(
+      locationSettings: locationSettings,
+    ).listen((Position position) {
+      if (mounted) {
+        setState(() {
+          _currentPosition = position;
+        });
+      }
+    });
+
+    // Fetch initial immediately
+    Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high)
+        .then((pos) {
+          if (mounted) {
+            setState(() {
+              _currentPosition = pos;
+            });
+          }
+        })
+        .catchError((e) => debugPrint("Error fetching location: $e"));
+  }
+
+  void _showLocationServiceDialog() {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            backgroundColor: AppColors.bgSurface,
+            title: const Text(
+              'Location Disabled',
+              style: TextStyle(color: Colors.white),
+            ),
+            content: const Text(
+              'Please enable location services to report a disaster accurately.',
+              style: TextStyle(color: Colors.white70),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.white54),
+                ),
+              ),
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await Geolocator.openLocationSettings();
+                },
+                child: const Text(
+                  'Enable',
+                  style: TextStyle(color: AppColors.orange),
+                ),
+              ),
+            ],
+          ),
+    );
   }
 
   final List<String> _disasterTypes = [
@@ -104,8 +218,9 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen>
       _snack('Please describe the situation.');
       return;
     }
-    if (_uploadedPhotos.length < 2) {
-      _snack('Please upload at least 2 photos as evidence.');
+
+    if (_currentPosition == null) {
+      _snack('Acquiring precise location. Please wait...');
       return;
     }
 
@@ -134,8 +249,8 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen>
           "disaster_type": _selectedType,
           "title": _titleCtrl.text,
           "description": _descCtrl.text,
-          "latitude": 27.7172, // TODO: Replace with real GPS lat
-          "longitude": 85.3240, // TODO: Replace with real GPS lng
+          "latitude": _currentPosition!.latitude,
+          "longitude": _currentPosition!.longitude,
           "severity": severityStr,
         },
       );
@@ -205,6 +320,7 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen>
   }
 
   void _snack(String msg) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -220,13 +336,7 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen>
   }
 
   void _simulatePhotoUpload() {
-    if (_uploadedPhotos.length >= 5) {
-      _snack('Maximum 5 photos allowed.');
-      return;
-    }
-    setState(() {
-      _uploadedPhotos.add('photo_${_uploadedPhotos.length + 1}.jpg');
-    });
+    _snack('Camera/Gallery upload must be linked to backend. Currently disabled.');
   }
 
   void _removePhoto(int index) {
@@ -664,37 +774,64 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen>
 
   // ── 5. GPS card ────────────────────────────────────────────────────────────
   Widget _buildGpsCard() {
+    final bool hasLocation = _currentPosition != null;
+    final String latStr =
+        hasLocation ? _currentPosition!.latitude.toStringAsFixed(4) : '--.----';
+    final String lngStr =
+        hasLocation
+            ? _currentPosition!.longitude.toStringAsFixed(4)
+            : '--.----';
+    final String locText = '$latStr°N, $lngStr°E';
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: AppColors.success.withOpacity(0.08),
+        color:
+            hasLocation
+                ? AppColors.success.withOpacity(0.08)
+                : AppColors.warning.withOpacity(0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.success.withOpacity(0.3), width: 1),
+        border: Border.all(
+          color:
+              hasLocation
+                  ? AppColors.success.withOpacity(0.3)
+                  : AppColors.warning.withOpacity(0.3),
+          width: 1,
+        ),
       ),
       child: Row(
         children: [
-          const Icon(Icons.location_on, color: AppColors.success, size: 18),
+          Icon(
+            Icons.location_on,
+            color: hasLocation ? AppColors.success : AppColors.warning,
+            size: 18,
+          ),
           const SizedBox(width: 10),
-          const Text(
-            '26.8065°N, 87.2846°E',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              fontFamily: 'monospace',
+          Expanded(
+            child: Text(
+              locText,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'monospace',
+              ),
             ),
           ),
           const SizedBox(width: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
             decoration: BoxDecoration(
-              color: AppColors.success.withOpacity(0.15),
+              color:
+                  hasLocation
+                      ? AppColors.success.withOpacity(0.15)
+                      : AppColors.warning.withOpacity(0.15),
               borderRadius: BorderRadius.circular(6),
             ),
-            child: const Text(
-              'Auto-detected',
+            child: Text(
+              hasLocation ? 'Auto-detected' : 'Locating...',
               style: TextStyle(
-                color: AppColors.success,
+                color: hasLocation ? AppColors.success : AppColors.warning,
                 fontSize: 10,
                 fontWeight: FontWeight.w600,
               ),

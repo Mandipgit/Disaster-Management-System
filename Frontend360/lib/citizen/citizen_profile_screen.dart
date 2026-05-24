@@ -3,9 +3,8 @@ import 'package:disaster360/providers/auth_provider.dart';
 import 'package:disaster360/auth/auth_wrapper.dart';
 import 'package:disaster360/main.dart';
 import 'package:disaster360/services/feedback.dart';
-import 'package:disaster360/services/offline_support.dart';
 import 'package:disaster360/colors.dart';
-import 'package:flutter/material.dart';
+  import 'package:flutter/material.dart';
 
 class CitizenProfileScreen extends StatefulWidget {
   const CitizenProfileScreen({super.key});
@@ -15,17 +14,30 @@ class CitizenProfileScreen extends StatefulWidget {
 }
 
 class _CitizenProfileScreenState extends State<CitizenProfileScreen> {
-  // ── User data (replace with real model/provider in production) ─────────────
-  String _name = 'Amit Mahato';
-  String _initials = 'AM';
-  String _role = 'Citizen';
-  String _citizenshipNo = '12-34-56-78901';
-  String _email = 'amit@example.com';
-  String _phone = '+977  98XXXXXXXX';
-  int _reportsSubmitted = 14;
+  String _getInitials(String name) {
+    if (name.isEmpty) return "U";
+    var split = name.trim().split(' ');
+    if (split.length > 1) {
+      return '${split[0][0]}${split[1][0]}'.toUpperCase();
+    }
+    return name[0].toUpperCase();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final user = auth.user;
+
+    final _name = user?.fullName ?? 'Citizen User';
+    final _initials = _getInitials(_name);
+    final _role = user?.role ?? 'Citizen';
+    final _citizenshipNo = user?.citizenshipNumber ?? 'N/A';
+    final _email = user?.email ?? 'N/A';
+    final _phone = user?.phone ?? 'N/A';
+    final _issueDate = user?.citizenshipIssueDate ?? 'N/A';
+    final _issueDistrict = user?.citizenshipIssueDistrict ?? 'N/A';
+    final _reportsSubmitted = 0; // Or fetch from ReportProvider!
+
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
       // ── No bottom navigation bar per project requirement ───────────────────
@@ -37,12 +49,18 @@ class _CitizenProfileScreenState extends State<CitizenProfileScreen> {
             children: [
               _buildHeader(context),
               const SizedBox(height: 28),
-              _buildAvatar(),
+              _buildAvatar(_initials),
               const SizedBox(height: 14),
-              _buildNameAndRole(),
+              _buildNameAndRole(_name, _role),
               const SizedBox(height: 16),
 
-              _buildInfoCard(),
+              _buildInfoCard(
+                _citizenshipNo,
+                _email,
+                _phone,
+                _issueDate,
+                _issueDistrict,
+              ),
               const SizedBox(height: 16),
               _buildMenuCard(context),
               const SizedBox(height: 28),
@@ -85,7 +103,7 @@ class _CitizenProfileScreenState extends State<CitizenProfileScreen> {
   }
 
   // ── Avatar ─────────────────────────────────────────────────────────────────
-  Widget _buildAvatar() {
+  Widget _buildAvatar(String initials) {
     return Container(
       width: 80,
       height: 80,
@@ -95,7 +113,7 @@ class _CitizenProfileScreenState extends State<CitizenProfileScreen> {
       ),
       child: Center(
         child: Text(
-          _initials,
+          initials,
           style: const TextStyle(
             color: Colors.white,
             fontSize: 26,
@@ -107,11 +125,11 @@ class _CitizenProfileScreenState extends State<CitizenProfileScreen> {
   }
 
   // ── Name + role badge ──────────────────────────────────────────────────────
-  Widget _buildNameAndRole() {
+  Widget _buildNameAndRole(String name, String role) {
     return Column(
       children: [
         Text(
-          _name,
+          name,
           style: const TextStyle(
             color: Colors.white,
             fontSize: 20,
@@ -131,7 +149,7 @@ class _CitizenProfileScreenState extends State<CitizenProfileScreen> {
             ),
           ),
           child: Text(
-            _role,
+            role.toUpperCase(),
             style: const TextStyle(
               color: AppColors.info,
               fontSize: 12,
@@ -144,16 +162,19 @@ class _CitizenProfileScreenState extends State<CitizenProfileScreen> {
   }
 
   // ── Info card ──────────────────────────────────────────────────────────────
-  Widget _buildInfoCard() {
+  Widget _buildInfoCard(
+    String citizenshipNo,
+    String email,
+    String phone,
+    String issueDate,
+    String issueDistrict,
+  ) {
     final rows = [
-      _InfoRow(label: 'Citizenship No.', value: _citizenshipNo),
-      _InfoRow(label: 'Email', value: _email),
-      _InfoRow(label: 'Phone', value: _phone),
-      _InfoRow(
-        label: 'Reports Submitted',
-        value: '$_reportsSubmitted',
-        valueColor: AppColors.orange,
-      ),
+      _InfoRow(label: 'Email', value: email),
+      _InfoRow(label: 'Phone', value: phone),
+      _InfoRow(label: 'Citizenship No.', value: citizenshipNo),
+      _InfoRow(label: 'Issue Dist.', value: issueDistrict),
+      _InfoRow(label: 'Issue Date (A.D.)', value: issueDate),
     ];
 
     return Container(
@@ -223,18 +244,7 @@ class _CitizenProfileScreenState extends State<CitizenProfileScreen> {
                 ),
           ),
           const Divider(height: 1, color: AppColors.border, indent: 56),
-          _MenuTile(
-            icon: Icons.wifi_off_rounded,
-            label: 'Offline Support',
-            onTap:
-                () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const OfflineSupportScreen(),
-                  ),
-                ),
-          ),
-        ],
+],
       ),
     );
   }
@@ -259,9 +269,9 @@ class _CitizenProfileScreenState extends State<CitizenProfileScreen> {
 
   // ── Edit profile dialog ────────────────────────────────────────────────────
   void _showEditDialog(BuildContext context) {
-    final nameCtrl = TextEditingController(text: _name);
-    final emailCtrl = TextEditingController(text: _email);
-    final phoneCtrl = TextEditingController(text: _phone);
+    final user = context.read<AuthProvider>().user;
+    final nameCtrl = TextEditingController(text: user?.fullName ?? '');
+    final phoneCtrl = TextEditingController(text: user?.phone ?? '');
 
     showDialog(
       context: context,
@@ -283,8 +293,6 @@ class _CitizenProfileScreenState extends State<CitizenProfileScreen> {
               children: [
                 _DialogField(controller: nameCtrl, label: 'Full Name'),
                 const SizedBox(height: 12),
-                _DialogField(controller: emailCtrl, label: 'Email'),
-                const SizedBox(height: 12),
                 _DialogField(controller: phoneCtrl, label: 'Phone'),
               ],
             ),
@@ -297,28 +305,27 @@ class _CitizenProfileScreenState extends State<CitizenProfileScreen> {
                 ),
               ),
               ElevatedButton(
-                onPressed: () {
-                  setState(() {
-                    _name =
-                        nameCtrl.text.trim().isNotEmpty
-                            ? nameCtrl.text.trim()
-                            : _name;
-                    _email =
-                        emailCtrl.text.trim().isNotEmpty
-                            ? emailCtrl.text.trim()
-                            : _email;
-                    _phone =
-                        phoneCtrl.text.trim().isNotEmpty
-                            ? phoneCtrl.text.trim()
-                            : _phone;
-                    // Update initials
-                    final parts = _name.split(' ');
-                    _initials =
-                        parts.length >= 2
-                            ? '${parts[0][0]}${parts[1][0]}'.toUpperCase()
-                            : _name.substring(0, 2).toUpperCase();
-                  });
-                  Navigator.pop(context);
+                onPressed: () async {
+                  try {
+                    await context.read<AuthProvider>().updateProfile(
+                      fullName: nameCtrl.text.trim(),
+                      phone: phoneCtrl.text.trim(),
+                    );
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Profile updated successfully.'),
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Failed to update: $e')),
+                      );
+                    }
+                  }
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.orange,

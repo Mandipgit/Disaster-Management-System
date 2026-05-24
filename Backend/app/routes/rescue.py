@@ -5,7 +5,7 @@ from typing import List, Optional
 from datetime import datetime
 
 from ..database import get_db
-from ..models.report import Report
+from ..models.incident import Incident
 from ..models.rescue_update import RescueUpdate
 from ..models.user import User
 from .auth import get_current_rescue_team
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/rescue", tags=["Rescue Team"])
 # Pydantic Schemas
 # ======================
 class AcknowledgeRequest(BaseModel):
-    report_id: int
+    incident_id: int
 
 
 class StatusUpdateRequest(BaseModel):
@@ -37,7 +37,7 @@ def get_verified_reports(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_rescue_team)
 ):
-    reports = db.query(Report).filter(Report.status == "Verified").all()
+    reports = db.query(Incident).filter(Incident.status == "Verified").all()
 
     if not reports:
         raise HTTPException(
@@ -47,9 +47,9 @@ def get_verified_reports(
 
     result = []
     for r in reports:
-        # Check if this rescue team member has already acknowledged this report
+        # Check if this rescue team member has already acknowledged this incident
         rescue_update = db.query(RescueUpdate).filter(
-            RescueUpdate.report_id == r.id,
+            RescueUpdate.incident_id == r.id,
             RescueUpdate.rescue_team_id == current_user.id
         ).first()
 
@@ -82,31 +82,31 @@ def acknowledge_report(
     current_user: User = Depends(get_current_rescue_team)
 ):
     # Check report exists and is verified
-    report = db.query(Report).filter(Report.id == payload.report_id).first()
+    report = db.query(Incident).filter(Incident.id == payload.incident_id).first()
     if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
+        raise HTTPException(status_code=404, detail="Incident not found")
 
     if report.status != "Verified": # type: ignore
         raise HTTPException(
             status_code=400,
-            detail="Only verified reports can be acknowledged"
+            detail="Only verified incidents can be acknowledged"
         )
 
     # Check if already acknowledged by this rescue team member
     existing = db.query(RescueUpdate).filter(
-        RescueUpdate.report_id == payload.report_id,
+        RescueUpdate.incident_id == payload.incident_id,
         RescueUpdate.rescue_team_id == current_user.id
     ).first()
 
     if existing:
         raise HTTPException(
             status_code=400,
-            detail="You have already acknowledged this report"
+            detail="You have already acknowledged this incident"
         )
 
     # Create rescue update entry
     rescue_update = RescueUpdate(
-        report_id=payload.report_id,
+        incident_id=payload.incident_id,
         rescue_team_id=current_user.id,
         status="Acknowledged",
         is_acknowledged=True,
@@ -118,7 +118,7 @@ def acknowledge_report(
     db.refresh(rescue_update)
 
     return {
-        "message": f"Report {payload.report_id} acknowledged successfully",
+        "message": f"Incident {payload.incident_id} acknowledged successfully",
         "rescue_update_id": rescue_update.id,
         "acknowledged_by": current_user.email,
         "acknowledged_at": rescue_update.acknowledged_at
@@ -202,10 +202,10 @@ def get_my_operations(
 
     result = []
     for op in operations:
-        report = db.query(Report).filter(Report.id == op.report_id).first()
+        report = db.query(Incident).filter(Incident.id == op.incident_id).first()
         result.append({
             "rescue_update_id": op.id,
-            "report_id": op.report_id,
+            "incident_id": op.incident_id,
             "report_title": report.title if report else None,
             "disaster_type": report.disaster_type if report else None,
             "location": report.location if report else None,
