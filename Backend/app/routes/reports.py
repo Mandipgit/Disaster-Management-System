@@ -114,7 +114,8 @@ def serialize_incident(inc, current_user_id=None):
         "likes": likes,
         "dislikes": dislikes,
         "user_reaction": user_reaction,
-        "submissions": submissions
+        "submissions": submissions,
+        "media_urls": [m.file_path for m in inc.media if m.file_type == "image"] if hasattr(inc, "media") and inc.media else []
     }
 
 @router.post("/")

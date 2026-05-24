@@ -51,3 +51,9 @@
         <string>Disaster360 needs your location in the background to provide live disaster proximity alerts.</string>
         <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
         <string>Disaster360 requires continuous GPS tracking to monitor disaster zones near your active location.</string>
+        <key>NSPhotoLibraryUsageDescription</key>
+        <string>Disaster360 needs access to your photo library to attach photos to your disaster reports.</string>
+        <key>NSCameraUsageDescription</key>
+        <string>Disaster360 needs access to your camera to take photos of disasters.</string>
+</dict>
+</plist>
