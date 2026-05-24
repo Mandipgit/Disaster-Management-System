@@ -24,3 +24,4 @@ class Incident(Base):
 
     reports = relationship("Report", back_populates="incident", cascade="all, delete-orphan")
     reactions = relationship("ReportReaction", back_populates="incident", cascade="all, delete-orphan")
+    assignments = relationship("IncidentAssignment", back_populates="incident", cascade="all, delete-orphan")

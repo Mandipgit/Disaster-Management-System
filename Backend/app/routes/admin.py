@@ -1,10 +1,14 @@
+# pyrefly: ignore [missing-import]
 from fastapi import APIRouter, Depends, HTTPException
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session
+# pyrefly: ignore [missing-import]
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 from ..database import get_db
 from ..models.incident import Incident
+from ..models.incident_assignment import IncidentAssignment
 from ..models.report import Report
 from ..models.user import User
 from .auth import get_current_admin
@@ -15,6 +19,10 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 # ======================
 # Pydantic Schemas
 # ======================
+class AssignTeamRequest(BaseModel):
+    team_names: List[str]
+
+
 class StatusUpdateRequest(BaseModel):
     status: str
 
@@ -28,6 +36,9 @@ class ReportUpdateRequest(BaseModel):
     severity: Optional[str] = None
 
 
+# pyrefly: ignore [missing-import]
+from sqlalchemy.orm import joinedload
+
 # ======================
 # Get All Reports (approved admin only)
 # Fixed path — must stay above /reports/{report_id}
@@ -37,23 +48,18 @@ def get_all_reports(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin)
 ):
-    reports = db.query(Report).all()
-    result = []
-    for r in reports:
-        result.append({
-            "id": r.id,
-            "user_id": r.user_id,
-            "disaster_type": r.disaster_type,
-            "title": r.title,
-            "description": r.description,
-            "latitude": r.latitude,
-            "longitude": r.longitude,
-            "severity": r.severity,
-            "status": r.status,
-            "verified": getattr(r, 'verified', False),
-            "created_at": r.created_at,
-            "updated_at": r.updated_at
-        })
+    from .reports import serialize_incident
+    
+    incidents = (
+        db.query(Incident)
+        .options(
+            joinedload(Incident.reports).joinedload(Report.user),
+            joinedload(Incident.reactions)
+        )
+        .all()
+    )
+    
+    result = [serialize_incident(inc, current_user.id) for inc in incidents]
     return {"total": len(result), "reports": result}
 
 
@@ -68,31 +74,31 @@ def admin_update_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin)
 ):
-    report = db.query(Report).filter(Report.id == report_id).first()
+    incident = db.query(Incident).filter(Incident.id == report_id).first()
 
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
 
     # Only update fields that were actually sent
     if payload.disaster_type is not None:
-        report.disaster_type = payload.disaster_type # type: ignore
+        incident.disaster_type = payload.disaster_type
     if payload.title is not None:
-        report.title = payload.title # type: ignore
+        incident.title = payload.title
     if payload.description is not None:
-        report.description = payload.description # type: ignore
+        incident.description = payload.description
     if payload.latitude is not None:
-        report.latitude = payload.latitude # type: ignore
+        incident.latitude = payload.latitude
     if payload.longitude is not None:
-        report.longitude = payload.longitude # type: ignore
+        incident.longitude = payload.longitude
     if payload.severity is not None:
-        report.severity = payload.severity # type: ignore
+        incident.severity = payload.severity
 
     db.commit()
-    db.refresh(report)
+    db.refresh(incident)
 
     return {
-        "message": "Report updated successfully",
-        "report_id": report.id,
+        "message": "Incident updated successfully",
+        "report_id": incident.id,
         "updated_by": current_user.email
     }
 
@@ -184,19 +190,57 @@ def update_report_status(
             detail=f"Invalid status. Allowed values: {allowed_status}"
         )
 
-    report = db.query(Report).filter(Report.id == report_id).first()
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
+    incident = db.query(Incident).filter(Incident.id == report_id).first()
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
 
-    report.status = payload.status # type: ignore
+    incident.status = payload.status
+
+    # Cascade the status to all linked reports
+    for r in incident.reports:
+        r.status = payload.status
+
     db.commit()
-    db.refresh(report)
+    db.refresh(incident)
 
     return {
-        "message": "Report status updated successfully",
-        "report_id": report.id,
-        "new_status": report.status,
+        "message": "Incident status updated successfully",
+        "report_id": incident.id,
+        "new_status": incident.status,
         "updated_by": current_user.email
+    }
+
+
+# ======================
+# Assign Teams to Report (approved admin only)
+# ======================
+@router.post("/reports/{report_id}/assign")
+def admin_assign_team(
+    report_id: int,
+    payload: AssignTeamRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    incident = db.query(Incident).filter(Incident.id == report_id).first()
+
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    # Clear existing assignments
+    db.query(IncidentAssignment).filter(IncidentAssignment.incident_id == incident.id).delete()
+
+    # Add new ones
+    for t in payload.team_names:
+        db.add(IncidentAssignment(incident_id=incident.id, team_name=t))
+
+    db.commit()
+    db.refresh(incident)
+
+    return {
+        "message": "Teams assigned successfully",
+        "report_id": incident.id,
+        "assigned_teams": payload.team_names,
+        "assigned_by": current_user.email
     }
 
 
@@ -209,16 +253,16 @@ def admin_delete_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin)
 ):
-    report = db.query(Report).filter(Report.id == report_id).first()
+    incident = db.query(Incident).filter(Incident.id == report_id).first()
 
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
 
-    db.delete(report)
+    db.delete(incident)
     db.commit()
 
     return {
-        "message": f"Report {report_id} deleted successfully",
+        "message": f"Incident {report_id} and all associated reports deleted successfully",
         "deleted_by": current_user.email
     }
 # ======================
