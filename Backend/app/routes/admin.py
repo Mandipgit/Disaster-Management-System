@@ -266,6 +266,66 @@ def admin_delete_report(
         "deleted_by": current_user.email
     }
 # ======================
+# Get Active Rescue Operations (approved admin only)
+# ======================
+@router.get("/active-rescues")
+def get_active_rescues(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    from ..models.rescue_update import RescueUpdate
+    operations = db.query(RescueUpdate).filter(RescueUpdate.status != "Closed").all()
+    
+    result = []
+    for op in operations:
+        incident = db.query(Incident).filter(Incident.id == op.incident_id).first()
+        team_user = db.query(User).filter(User.id == op.rescue_team_id).first()
+        
+        result.append({
+            "initials": "".join([part[0] for part in team_user.full_name.split()[:2]]).upper() if team_user and team_user.full_name else "RT",
+            "name": team_user.full_name if team_user else "Unknown Team",
+            "locationStatus": f"{incident.location if incident and incident.location else 'Unknown'} — {op.status}",
+            "badge": "Active" if op.is_acknowledged else "Dispatch",
+            "reportType": incident.disaster_type if incident else "Unknown",
+            "title": incident.title if incident else "Unknown",
+            "flag": op.status
+        })
+    return result
+
+
+# ======================
+# Get Duplicate Reports (approved admin only)
+# ======================
+@router.get("/duplicate-reports")
+def get_duplicate_reports(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    incidents = db.query(Incident).filter(Incident.sources > 1).all()
+    result = []
+    for inc in incidents:
+        reports_info = []
+        for r in inc.reports:
+            user = db.query(User).filter(User.id == r.user_id).first()
+            reports_info.append({
+                "id": f"RPT-{r.id:05d}",
+                "title": f"{inc.disaster_type} — {inc.location if inc.location else 'Unknown'}",
+                "date": r.timestamp.strftime("%b %d, %Y") if getattr(r, "timestamp", None) else inc.created_at.strftime("%b %d, %Y"),
+                "reporter": user.full_name if user else "Unknown"
+            })
+        
+        summary_ids = " & ".join([f"#{r['id']}" for r in reports_info[:2]])
+        if len(reports_info) > 2:
+            summary_ids += f" & {len(reports_info) - 2} more"
+            
+        result.append({
+            "summary": f"{len(inc.reports)} duplicates merged — {summary_ids}",
+            "detail": f"{inc.disaster_type} · {inc.location if inc.location else 'Unknown'}",
+            "mergedReports": reports_info
+        })
+    return result
+
+# ======================
 # User Management Endpoints
 # ======================
 

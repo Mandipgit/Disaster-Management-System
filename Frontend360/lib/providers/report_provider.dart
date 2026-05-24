@@ -61,9 +61,13 @@ class ReportModel {
 class ReportProvider extends ChangeNotifier {
   final ApiService _apiService = ApiService();
   List<ReportModel> _reports = [];
+  List<Map<String, dynamic>> _activeRescues = [];
+  List<Map<String, dynamic>> _duplicateReports = [];
   bool _isLoading = false;
 
   List<ReportModel> get reports => _reports;
+  List<Map<String, dynamic>> get activeRescues => _activeRescues;
+  List<Map<String, dynamic>> get duplicateReports => _duplicateReports;
   bool get isLoading => _isLoading;
 
   Future<void> fetchReports() async {
@@ -80,6 +84,30 @@ class ReportProvider extends ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> fetchActiveRescues() async {
+    try {
+      final response = await _apiService.get('/admin/active-rescues');
+      if (response is List) {
+        _activeRescues = List<Map<String, dynamic>>.from(response);
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint("Error fetching active rescues: $e");
+    }
+  }
+
+  Future<void> fetchDuplicateReports() async {
+    try {
+      final response = await _apiService.get('/admin/duplicate-reports');
+      if (response is List) {
+        _duplicateReports = List<Map<String, dynamic>>.from(response);
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint("Error fetching duplicate reports: $e");
     }
   }
 

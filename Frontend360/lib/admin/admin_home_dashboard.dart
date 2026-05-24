@@ -66,7 +66,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<ReportProvider>().fetchReports();
+      final provider = context.read<ReportProvider>();
+      provider.fetchReports();
+      provider.fetchActiveRescues();
+      provider.fetchDuplicateReports();
     });
     _pageEntryCtrl = AnimationController(
       vsync: this,
@@ -101,6 +104,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     // so the list is always in sync with the database.
     if (index == 1) {
       context.read<ReportProvider>().fetchReports();
+    } else if (index == 0) {
+      final provider = context.read<ReportProvider>();
+      provider.fetchReports();
+      provider.fetchActiveRescues();
+      provider.fetchDuplicateReports();
     }
   }
 
@@ -601,41 +609,22 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   // ─── Rescue Team Status ───────────────────────────────────────────────────
   Widget _buildRescueTeamStatus(BuildContext context) {
-    final teams = [
-      _RescueTeamData(
-        initials: 'FR',
-        initialsColor: AppColors.danger,
-        name: 'Fire Response Team A',
-        locationStatus: 'Hattitar — Onscene',
-        badge: 'Active',
-        badgeColor: AppColors.success,
-        reportType: 'Fire',
-        title: 'Building Fire — Hattitar',
-        flag: 'Rescuer Reached',
-      ),
-      _RescueTeamData(
-        initials: 'AU',
-        initialsColor: AppColors.warning,
-        name: 'Ambulance Unit 2',
-        locationStatus: 'Biratnagar — En route',
-        badge: 'Dispatch',
-        badgeColor: AppColors.info,
-        reportType: 'Medical Emergency',
-        title: 'Injury Report — Biratnagar',
-        flag: 'En Route',
-      ),
-      _RescueTeamData(
-        initials: 'FR',
+    final reportProvider = context.watch<ReportProvider>();
+    final activeRescues = reportProvider.activeRescues;
+
+    final teams = activeRescues.map((rescue) {
+      return _RescueTeamData(
+        initials: rescue['initials'] ?? 'RT',
         initialsColor: AppColors.info,
-        name: 'Flood Response Team B',
-        locationStatus: 'Itahari — Onscene',
-        badge: 'Active',
-        badgeColor: AppColors.success,
-        reportType: 'Flood',
-        title: 'Flooding — Itahari Bus Park',
-        flag: 'Ongoing',
-      ),
-    ];
+        name: rescue['name'] ?? 'Unknown Team',
+        locationStatus: rescue['locationStatus'] ?? 'Unknown',
+        badge: rescue['badge'] ?? 'Dispatch',
+        badgeColor: rescue['badge'] == 'Active' ? AppColors.success : AppColors.info,
+        reportType: rescue['reportType'] ?? 'Unknown',
+        title: rescue['title'] ?? 'Unknown',
+        flag: rescue['flag'] ?? 'Ongoing',
+      );
+    }).toList();
 
     final isWide =
         _Breakpoint.isTablet(context) || _Breakpoint.isDesktop(context);
@@ -645,8 +634,13 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       children: [
         const _SectionLabel('RESCUE TEAM STATUS'),
         const SizedBox(height: 12),
-        isWide
-            ? _threeColumnGrid(
+        if (teams.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Text('No active rescue operations.', style: TextStyle(color: Colors.white54)),
+          )
+        else if (isWide)
+            _threeColumnGrid(
               teams
                   .map(
                     (team) => _AnimatedRescueCard(
@@ -656,7 +650,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                   )
                   .toList(),
             )
-            : Column(
+        else
+            Column(
               children:
                   teams
                       .map(
@@ -777,38 +772,44 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   // ─── Duplicate Reports ────────────────────────────────────────────────────
   Widget _buildDuplicateReports(BuildContext context) {
-    final duplicates = [
-      _DuplicateReportData(
-        summary: '2 duplicates merged — #RPT-00419 & #RPT-00418',
-        detail: 'Cosine similarity 87%  ·  Flood  ·  Same GPS zone',
-        mergedReports: [
-          _MergedReportItem(
-            id: 'RPT-00419',
-            title: 'Flood — Itahari, Ward 3',
-            date: 'Mar 16, 2026',
-            reporter: 'Sita Rai',
-          ),
-          _MergedReportItem(
-            id: 'RPT-00418',
-            title: 'Flood — Itahari, Ward 3',
-            date: 'Mar 16, 2026',
-            reporter: 'Kiran Shrestha',
-          ),
-        ],
-      ),
-    ];
+    final reportProvider = context.watch<ReportProvider>();
+    final duplicateReports = reportProvider.duplicateReports;
+
+    final duplicates = duplicateReports.map((dup) {
+      final mergedReportsRaw = dup['mergedReports'] as List<dynamic>? ?? [];
+      final mergedReports = mergedReportsRaw.map((r) {
+        return _MergedReportItem(
+          id: r['id'] ?? 'Unknown',
+          title: r['title'] ?? 'Unknown',
+          date: r['date'] ?? 'Unknown',
+          reporter: r['reporter'] ?? 'Unknown',
+        );
+      }).toList();
+
+      return _DuplicateReportData(
+        summary: dup['summary'] ?? '',
+        detail: dup['detail'] ?? '',
+        mergedReports: mergedReports,
+      );
+    }).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const _SectionLabel('DUPLICATE REPORTS'),
         const SizedBox(height: 12),
-        ...duplicates.map(
-          (dup) => _AnimatedDuplicateCard(
-            data: dup,
-            onTap: () => _showMergedReportsDialog(context, dup),
+        if (duplicates.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Text('No duplicate reports found.', style: TextStyle(color: Colors.white54)),
+          )
+        else
+          ...duplicates.map(
+            (dup) => _AnimatedDuplicateCard(
+              data: dup,
+              onTap: () => _showMergedReportsDialog(context, dup),
+            ),
           ),
-        ),
       ],
     );
   }
