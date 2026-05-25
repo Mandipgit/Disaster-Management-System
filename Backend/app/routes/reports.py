@@ -184,7 +184,14 @@ def create_report(
         db.commit()
         db.refresh(matched_incident)
         
-        new_report = Report(incident_id=matched_incident.id, user_id=current_user.id, description=payload.description, timestamp=parsed_timestamp)
+        new_report = Report(
+            incident_id=matched_incident.id, 
+            user_id=current_user.id, 
+            description=payload.description, 
+            timestamp=parsed_timestamp,
+            status=matched_incident.status,
+            verified=getattr(matched_incident, 'verified', False)
+        )
         db.add(new_report)
         db.commit()
 
@@ -229,8 +236,14 @@ def create_report(
 
 @router.get("/", response_model=List[dict])
 def get_reports(db: Session = Depends(get_db), current_user: User | None = Depends(get_optional_current_user)):
+    query = db.query(Incident)
+    
+    # If not logged in, or not an admin, hide rejected reports
+    if not current_user or current_user.role != "admin":
+        query = query.filter(Incident.status != "Rejected")
+        
     incidents = (
-        db.query(Incident)
+        query
         .options(joinedload(Incident.reports).joinedload(Report.user), joinedload(Incident.reactions))
         .all()
     )
@@ -254,7 +267,7 @@ def get_my_reports(db: Session = Depends(get_db), current_user: User = Depends(g
 
 @router.get("/nearby", response_model=List[dict])
 def get_nearby_reports(lat: float, lon: float, radius: float = 5.0, db: Session = Depends(get_db), current_user: User | None = Depends(get_optional_current_user)):
-    incidents = db.query(Incident).options(joinedload(Incident.reports).joinedload(Report.user), joinedload(Incident.reactions)).all()
+    incidents = db.query(Incident).filter(Incident.status != "Rejected").options(joinedload(Incident.reports).joinedload(Report.user), joinedload(Incident.reactions)).all()
     if not incidents: raise HTTPException(status_code=404, detail="No incidents found")
 
     nearby = []

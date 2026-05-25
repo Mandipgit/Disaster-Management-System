@@ -464,6 +464,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       upvotes: p.upvotes,
       downvotes: p.downvotes,
       mediaUrls: p.mediaUrls,
+      submissions: p.submissions,
     );
   }
 
@@ -491,6 +492,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                 reporter: m.userName,
                 trustScore: 80,
                 mediaUrls: m.mediaUrls,
+                submissions: m.submissions,
               ),
             )
             .toList();
@@ -508,9 +510,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               reports.map((report) {
                 final adminReport = _toAdminReportData(report);
                 final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
-                final isPendingRejection = intId != null && reportProvider.pendingRejections.contains(intId);
+                final isPendingDeletion = intId != null && reportProvider.pendingDeletions.contains(intId);
 
-                if (isPendingRejection) {
+                if (isPendingDeletion) {
                   return _buildInlineUndoCard(context, report, intId);
                 }
 
@@ -545,6 +547,21 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                   },
                   onReject:
                       () => _showRejectionSheet(context, adminReport, report),
+                  onUndoReject: () async {
+                    final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
+                    if (intId != null) {
+                      await reportProvider.undoRejectReport(intId);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Report reverted to Pending')),
+                        );
+                      }
+                    }
+                  },
+                  onDelete: () {
+                    final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
+                    if (intId != null) reportProvider.deleteReportWithInlineUndo(intId);
+                  },
                   onReview:
                       () => Navigator.push(
                         context,
@@ -560,9 +577,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                   reports.map((report) {
                     final adminReport = _toAdminReportData(report);
                     final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
-                    final isPendingRejection = intId != null && reportProvider.pendingRejections.contains(intId);
+                    final isPendingDeletion = intId != null && reportProvider.pendingDeletions.contains(intId);
 
-                    if (isPendingRejection) {
+                    if (isPendingDeletion) {
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: _buildInlineUndoCard(context, report, intId),
@@ -601,6 +618,21 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                       onReject:
                           () =>
                               _showRejectionSheet(context, adminReport, report),
+                      onUndoReject: () async {
+                        final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
+                        if (intId != null) {
+                          await reportProvider.undoRejectReport(intId);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Report reverted to Pending')),
+                            );
+                          }
+                        }
+                      },
+                      onDelete: () {
+                        final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
+                        if (intId != null) reportProvider.deleteReportWithInlineUndo(intId);
+                      },
                       onReview:
                           () => Navigator.push(
                             context,
@@ -616,13 +648,18 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   }
 
   Widget _buildInlineUndoCard(BuildContext context, _PendingReportData report, int intId) {
+    final color = AppColors.danger;
+    final icon = Icons.delete_outline;
+    final titleText = '${report.reportId} Deleted';
+    final subtitleText = 'Deleting permanently in 5s...';
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: AppColors.danger.withOpacity(0.08),
+        color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.danger.withOpacity(0.3), width: 1),
+        border: Border.all(color: color.withOpacity(0.3), width: 1),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -632,28 +669,28 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.danger.withOpacity(0.15),
+                  color: color.withOpacity(0.15),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.delete_outline, color: AppColors.danger, size: 20),
+                child: Icon(icon, color: color, size: 20),
               ),
               const SizedBox(width: 12),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${report.reportId} Rejected',
-                    style: const TextStyle(
-                      color: AppColors.danger,
+                    titleText,
+                    style: TextStyle(
+                      color: color,
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    'Deleting permanently in 5s...',
+                    subtitleText,
                     style: TextStyle(
-                      color: AppColors.danger.withOpacity(0.8),
+                      color: color.withOpacity(0.8),
                       fontSize: 12,
                     ),
                   ),
@@ -663,7 +700,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           ),
           TextButton(
             onPressed: () {
-              context.read<ReportProvider>().undoInlineRejection(intId);
+              context.read<ReportProvider>().undoInlineDeletion(intId);
             },
             style: TextButton.styleFrom(
               foregroundColor: Colors.white,
@@ -690,7 +727,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       Navigator.pop(context);
       final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
       if (intId != null) {
-        context.read<ReportProvider>().rejectReportWithInlineUndo(intId);
+        context.read<ReportProvider>().rejectReport(intId);
       }
     };
 
@@ -1409,6 +1446,8 @@ class _AnimatedPendingCard extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback onVerify;
   final VoidCallback onReject;
+  final VoidCallback onUndoReject;
+  final VoidCallback onDelete;
   final VoidCallback onReview;
 
   const _AnimatedPendingCard({
@@ -1416,6 +1455,8 @@ class _AnimatedPendingCard extends StatefulWidget {
     required this.onTap,
     required this.onVerify,
     required this.onReject,
+    required this.onUndoReject,
+    required this.onDelete,
     required this.onReview,
   });
 
@@ -1425,6 +1466,22 @@ class _AnimatedPendingCard extends StatefulWidget {
 
 class _AnimatedPendingCardState extends State<_AnimatedPendingCard> {
   bool _hovered = false;
+  bool _isExpanded = false;
+
+  String _relativeDate(String dateStr) {
+    try {
+      if (!dateStr.endsWith('Z') && !dateStr.contains('+')) dateStr += 'Z';
+      final dt = DateTime.parse(dateStr).toLocal();
+      final now = DateTime.now();
+      final diff = now.difference(dt);
+      if (diff.inHours < 1) {
+        if (diff.inMinutes < 1) return 'Just now';
+        return '${diff.inMinutes} min ago';
+      } else if (diff.inHours < 24) return '${diff.inHours} hours ago';
+      else if (diff.inDays < 30) return '${diff.inDays} days ago';
+      else return '${dt.day}/${dt.month}/${dt.year}';
+    } catch (_) { return dateStr; }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1576,22 +1633,127 @@ class _AnimatedPendingCardState extends State<_AnimatedPendingCard> {
                     ],
                   ),
                   const SizedBox(height: 14),
+
+                  if (widget.report.submissions.isNotEmpty)
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        const Icon(Icons.group_outlined, color: Colors.white54, size: 14),
+                        const Text(
+                          'Reported by:',
+                          style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                        ...widget.report.submissions.map((sub) => Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppColors.orange.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                (sub['user_name'] ?? 'Citizen').toString(),
+                                style: const TextStyle(color: AppColors.orange, fontSize: 10, fontWeight: FontWeight.bold),
+                              ),
+                            )),
+                      ],
+                    ),
+                  if (widget.report.submissions.isNotEmpty) const SizedBox(height: 14),
+                  
+                  if (widget.report.submissions.length > 1) ...[
+                    const Divider(color: Colors.white12, height: 1),
+                    InkWell(
+                      onTap: () => setState(() => _isExpanded = !_isExpanded),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              _isExpanded ? 'Hide Matched Reports' : 'Show Matched Reports (${widget.report.submissions.length - 1})',
+                              style: const TextStyle(color: AppColors.orange, fontSize: 13, fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(
+                              _isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                              color: AppColors.orange,
+                              size: 18,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (_isExpanded)
+                      ...widget.report.submissions.skip(1).map((sub) => Container(
+                            margin: const EdgeInsets.only(top: 8, bottom: 8),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.white12),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      (sub['user_name'] ?? 'Citizen').toString(),
+                                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                                    ),
+                                    Text(
+                                      sub['timestamp'] != null ? _relativeDate(sub['timestamp'].toString()) : 'Unknown',
+                                      style: const TextStyle(color: Colors.white38, fontSize: 11),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  (sub['description'] ?? 'No description provided').toString(),
+                                  style: const TextStyle(color: Colors.white54, fontSize: 12, height: 1.4),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          )),
+                  ],
+
                   isNarrow
                       ? Column(
                         children: [
-                          _AnimatedActionButton(
-                            label: 'Verify',
-                            icon: Icons.check_rounded,
-                            color: AppColors.success,
-                            onTap: widget.onVerify,
-                            fullWidth: true,
-                          ),
+                          if (widget.report.status.toLowerCase() != 'rejected') ...[
+                            _AnimatedActionButton(
+                              label: 'Verify',
+                              icon: Icons.check_rounded,
+                              color: AppColors.success,
+                              onTap: widget.onVerify,
+                              fullWidth: true,
+                            ),
+                            const SizedBox(height: 8),
+                            _AnimatedActionButton(
+                              label: 'Reject',
+                              icon: Icons.close_rounded,
+                              color: AppColors.orange,
+                              onTap: widget.onReject,
+                              fullWidth: true,
+                            ),
+                          ] else ...[
+                            _AnimatedActionButton(
+                              label: 'Undo Reject',
+                              icon: Icons.undo_rounded,
+                              color: AppColors.orange,
+                              onTap: widget.onUndoReject,
+                              fullWidth: true,
+                            ),
+                          ],
                           const SizedBox(height: 8),
                           _AnimatedActionButton(
-                            label: 'Reject',
-                            icon: Icons.close_rounded,
+                            label: 'Delete',
+                            icon: Icons.delete_outline_rounded,
                             color: AppColors.danger,
-                            onTap: widget.onReject,
+                            onTap: widget.onDelete,
                             fullWidth: true,
                           ),
                           const SizedBox(height: 8),
@@ -1607,21 +1769,41 @@ class _AnimatedPendingCardState extends State<_AnimatedPendingCard> {
                       )
                       : Row(
                         children: [
-                          Expanded(
-                            child: _AnimatedActionButton(
-                              label: 'Verify',
-                              icon: Icons.check_rounded,
-                              color: AppColors.success,
-                              onTap: widget.onVerify,
+                          if (widget.report.status.toLowerCase() != 'rejected') ...[
+                            Expanded(
+                              child: _AnimatedActionButton(
+                                label: 'Verify',
+                                icon: Icons.check_rounded,
+                                color: AppColors.success,
+                                onTap: widget.onVerify,
+                              ),
                             ),
-                          ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _AnimatedActionButton(
+                                label: 'Reject',
+                                icon: Icons.close_rounded,
+                                color: AppColors.orange,
+                                onTap: widget.onReject,
+                              ),
+                            ),
+                          ] else ...[
+                            Expanded(
+                              child: _AnimatedActionButton(
+                                label: 'Undo Reject',
+                                icon: Icons.undo_rounded,
+                                color: AppColors.orange,
+                                onTap: widget.onUndoReject,
+                              ),
+                            ),
+                          ],
                           const SizedBox(width: 8),
                           Expanded(
                             child: _AnimatedActionButton(
-                              label: 'Reject',
-                              icon: Icons.close_rounded,
+                              label: 'Delete',
+                              icon: Icons.delete_outline_rounded,
                               color: AppColors.danger,
-                              onTap: widget.onReject,
+                              onTap: widget.onDelete,
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -2721,6 +2903,7 @@ class _PendingReportData {
   final String reporter;
   final int trustScore;
   final List<String> mediaUrls;
+  final List<dynamic> submissions;
 
   const _PendingReportData({
     required this.reportId,
@@ -2737,6 +2920,7 @@ class _PendingReportData {
     required this.reporter,
     required this.trustScore,
     required this.mediaUrls,
+    this.submissions = const [],
   });
 }
 

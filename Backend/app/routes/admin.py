@@ -10,8 +10,10 @@ from ..database import get_db
 from ..models.incident import Incident
 from ..models.incident_assignment import IncidentAssignment
 from ..models.report import Report
+from ..models.report_reaction import ReportReaction
 from ..models.user import User
 from .auth import get_current_admin
+from datetime import datetime, timedelta, timezone
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -262,9 +264,64 @@ def admin_delete_report(
     db.commit()
 
     return {
-        "message": f"Incident {report_id} and all associated reports deleted successfully",
+        "message": f"Incident {report_id} has been permanently deleted",
         "deleted_by": current_user.email
     }
+
+# ======================
+# Reject Any Report (approved admin only)
+# ======================
+@router.put("/reports/{report_id}/reject")
+def admin_reject_report(
+    report_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    incident = db.query(Incident).filter(Incident.id == report_id).first()
+
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    incident.status = "Rejected"
+    
+    # Cascade rejection to linked reports
+    for r in incident.reports:
+        r.status = "Rejected"
+
+    db.commit()
+
+    return {
+        "message": f"Incident {report_id} has been rejected",
+        "rejected_by": current_user.email
+    }
+
+# ======================
+# Undo Reject Report
+# ======================
+@router.put("/reports/{report_id}/undo-reject")
+def admin_undo_reject_report(
+    report_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    incident = db.query(Incident).filter(Incident.id == report_id).first()
+
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    incident.status = "Pending"
+    
+    # Cascade undo rejection to linked reports
+    for r in incident.reports:
+        r.status = "Pending"
+
+    db.commit()
+
+    return {
+        "message": f"Incident {report_id} is now Pending again",
+        "restored_by": current_user.email
+    }
+
 # ======================
 # Get Active Rescue Operations (approved admin only)
 # ======================
@@ -359,3 +416,125 @@ def update_user_status(
     db.commit()
     db.refresh(user)
     return {"message": "User status updated", "is_admin": user.is_admin, "is_rescueteam": user.is_rescueteam}
+
+# ======================
+# Analytics Endpoint
+# ======================
+@router.get("/analytics")
+def get_analytics(
+    time_range: str = "7D",
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_admin)
+):
+    now = datetime.utcnow()
+    if time_range == "24H":
+        cutoff = now - timedelta(hours=24)
+    elif time_range == "30D":
+        cutoff = now - timedelta(days=30)
+    elif time_range == "90D":
+        cutoff = now - timedelta(days=90)
+    else:  # default 7D
+        cutoff = now - timedelta(days=7)
+
+    # 1. KPIs
+    reports = db.query(Report).filter(Report.timestamp >= cutoff).all()
+    kpis = {
+        "total": len(reports),
+        "verified": sum(1 for r in reports if r.verified),
+        "rejected": sum(1 for r in reports if r.status == "Rejected"),
+        "pending": sum(1 for r in reports if r.status == "Pending")
+    }
+
+    # 2. Daily Report Volume
+    daily_reports = []
+    if time_range == "24H":
+        for i in reversed(range(6)):
+            bucket_start = now - timedelta(hours=(i+1)*4)
+            bucket_end = now - timedelta(hours=i*4)
+            count = sum(1 for r in reports if bucket_start <= r.timestamp <= bucket_end)
+            daily_reports.append({"label": f"{bucket_start.hour:02d}:00", "count": count, "showLabel": i % 2 == 0})
+    else:
+        days = 7 if time_range == "7D" else (30 if time_range == "30D" else 90)
+        bucket_size = 1 if time_range == "7D" else (7 if time_range == "30D" else 30)
+        num_buckets = days // bucket_size
+        for i in reversed(range(num_buckets)):
+            bucket_start = now - timedelta(days=(i+1)*bucket_size)
+            bucket_end = now - timedelta(days=i*bucket_size)
+            count = sum(1 for r in reports if bucket_start <= r.timestamp <= bucket_end)
+            label = bucket_start.strftime("%a") if time_range == "7D" else f"W{num_buckets - i}" if time_range == "30D" else bucket_start.strftime("%b")
+            daily_reports.append({"label": label, "count": count, "showLabel": True})
+
+    # 3. Disaster Types
+    incidents = db.query(Incident).filter(Incident.created_at >= cutoff).all()
+    type_counts = {}
+    for inc in incidents:
+        dt = inc.disaster_type or "Other"
+        if dt not in type_counts:
+            type_counts[dt] = {"count": 0, "verified": 0, "pending": 0, "avgResponse": 30, "severity": inc.severity or "Medium"}
+        type_counts[dt]["count"] += 1
+        if inc.verified:
+            type_counts[dt]["verified"] += 1
+        if inc.status == "Pending":
+            type_counts[dt]["pending"] += 1
+            
+    disaster_types = [{"label": k, **v} for k, v in type_counts.items()]
+
+    # 4. Community Trust
+    reactions = db.query(ReportReaction).join(Incident).filter(Incident.created_at >= cutoff).all()
+    upvotes = sum(1 for r in reactions if r.reaction_type.value == "LIKE" or r.reaction_type == "LIKE")
+    downvotes = sum(1 for r in reactions if r.reaction_type.value == "DISLIKE" or r.reaction_type == "DISLIKE")
+    
+    trust = {
+        "upvotes": upvotes,
+        "downvotes": downvotes,
+        "reportCount": len(incidents),
+        "avgUpvotes": round(upvotes / len(incidents), 1) if len(incidents) > 0 else 0,
+        "avgDownvotes": round(downvotes / len(incidents), 1) if len(incidents) > 0 else 0,
+        "topReport": "Recent Verification"
+    }
+
+    # 5. Top Reporters
+    user_report_counts = {}
+    for r in reports:
+        if r.user_id:
+            uid = str(r.user_id)
+            if uid not in user_report_counts:
+                user_report_counts[uid] = {"reports": 0, "verified": 0, "rejected": 0, "upvotes": 0}
+            user_report_counts[uid]["reports"] += 1
+            if r.verified:
+                user_report_counts[uid]["verified"] += 1
+            if r.status == "Rejected":
+                user_report_counts[uid]["rejected"] += 1
+
+    top_reporters_list = []
+    for uid, stats in sorted(user_report_counts.items(), key=lambda x: x[1]["reports"], reverse=True)[:5]:
+        user = db.query(User).filter(User.id == uid).first()
+        if user:
+            top_reporters_list.append({
+                "name": user.full_name or "Unknown User",
+                "location": "Local",
+                "reports": stats["reports"],
+                "trust": min(100, 50 + stats["verified"] * 10 - stats["rejected"] * 10),
+                "verified": stats["verified"],
+                "rejected": stats["rejected"],
+                "upvotes": stats["upvotes"]
+            })
+
+    # 6. Rescue Teams and Response Time (Currently no DB tables for this data)
+    rescue_teams = [
+        {"initials": "N/A", "name": "Data Not Available", "type": "Unknown", "missions": 0, "successRate": 0, "failed": 0, "avgTime": 0, "controlTime": 0, "status": "Unavailable"}
+    ]
+    response_time = {
+        "dispatch": 0, "onScene": 0, "controlled": 0, "fastest": 0, "slowest": 0
+    }
+
+    return {
+        "kpis": kpis,
+        "dailyReports": daily_reports,
+        "disasterTypes": disaster_types,
+        "communityTrust": trust,
+        "topReporters": top_reporters_list,
+        "rescueTeams": rescue_teams,
+        "responseTime": response_time
+    }
+

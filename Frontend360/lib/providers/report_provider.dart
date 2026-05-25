@@ -150,6 +150,17 @@ class ReportProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> deleteReportAdmin(int reportId) async {
+    try {
+      await _apiService.delete('/admin/reports/$reportId');
+      _reports.removeWhere((r) => r.id == reportId);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error deleting admin report: $e');
+      rethrow;
+    }
+  }
+
   Future<void> updateReport(int reportId, Map<String, dynamic> data) async {
     try {
       final response = await _apiService.put('/reports/$reportId', body: data);
@@ -161,15 +172,15 @@ class ReportProvider extends ChangeNotifier {
     }
   }
 
-  final Map<int, Timer> _rejectionTimers = {};
-  Set<int> get pendingRejections => _rejectionTimers.keys.toSet();
+  final Map<int, Timer> _deletionTimers = {};
+  Set<int> get pendingDeletions => _deletionTimers.keys.toSet();
 
-  void rejectReportWithInlineUndo(int reportId) {
-    if (_rejectionTimers.containsKey(reportId)) return;
+  void deleteReportWithInlineUndo(int reportId) {
+    if (_deletionTimers.containsKey(reportId)) return;
     
     // Start a 5-second timer
-    _rejectionTimers[reportId] = Timer(const Duration(seconds: 5), () async {
-      _rejectionTimers.remove(reportId);
+    _deletionTimers[reportId] = Timer(const Duration(seconds: 5), () async {
+      _deletionTimers.remove(reportId);
       
       try {
         await _apiService.delete('/admin/reports/$reportId');
@@ -186,11 +197,73 @@ class ReportProvider extends ChangeNotifier {
     notifyListeners(); // Rebuild UI to show the inline banner
   }
 
-  void undoInlineRejection(int reportId) {
-    if (_rejectionTimers.containsKey(reportId)) {
-      _rejectionTimers[reportId]?.cancel();
-      _rejectionTimers.remove(reportId);
+  void undoInlineDeletion(int reportId) {
+    if (_deletionTimers.containsKey(reportId)) {
+      _deletionTimers[reportId]?.cancel();
+      _deletionTimers.remove(reportId);
       notifyListeners();
+    }
+  }
+
+  Future<void> undoRejectReport(int reportId) async {
+    try {
+      await _apiService.put('/admin/reports/$reportId/undo-reject');
+
+      final index = _reports.indexWhere((r) => r.id == reportId);
+      if (index != -1) {
+        _reports[index] = ReportModel(
+          id: _reports[index].id,
+          userId: _reports[index].userId,
+          disasterType: _reports[index].disasterType,
+          title: _reports[index].title,
+          description: _reports[index].description,
+          latitude: _reports[index].latitude,
+          longitude: _reports[index].longitude,
+          severity: _reports[index].severity,
+          status: 'Pending',
+          verified: _reports[index].verified,
+          likes: _reports[index].likes,
+          dislikes: _reports[index].dislikes,
+          createdAt: _reports[index].createdAt,
+          submissions: _reports[index].submissions,
+          mediaUrls: _reports[index].mediaUrls,
+        );
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Error undoing rejection: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> rejectReport(int reportId) async {
+    try {
+      await _apiService.put('/admin/reports/$reportId/reject');
+
+      final index = _reports.indexWhere((r) => r.id == reportId);
+      if (index != -1) {
+        _reports[index] = ReportModel(
+          id: _reports[index].id,
+          userId: _reports[index].userId,
+          disasterType: _reports[index].disasterType,
+          title: _reports[index].title,
+          description: _reports[index].description,
+          latitude: _reports[index].latitude,
+          longitude: _reports[index].longitude,
+          severity: _reports[index].severity,
+          status: 'Rejected',
+          verified: _reports[index].verified,
+          likes: _reports[index].likes,
+          dislikes: _reports[index].dislikes,
+          createdAt: _reports[index].createdAt,
+          submissions: _reports[index].submissions,
+          mediaUrls: _reports[index].mediaUrls,
+        );
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Error rejecting report: $e');
+      rethrow;
     }
   }
 

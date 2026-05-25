@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:disaster360/colors.dart';
 import 'package:flutter/material.dart';
+import 'package:disaster360/services/api_service.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  ADMIN ANALYTICS SCREEN — Disaster360
@@ -47,6 +48,11 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
   String _timeRange = '7D';
   final List<String> _timeRanges = ['24H', '7D', '30D', '90D'];
 
+  final ApiService _apiService = ApiService();
+  Map<String, dynamic>? _analyticsData;
+  bool _isLoading = true;
+  String? _errorMessage;
+
   @override
   void initState() {
     super.initState();
@@ -59,7 +65,27 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
       begin: const Offset(0, 0.025),
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _animController, curve: Curves.easeOut));
-    _animController.forward();
+    _fetchAnalytics();
+  }
+
+  Future<void> _fetchAnalytics() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    try {
+      final response = await _apiService.get('/admin/analytics?time_range=$_timeRange');
+      setState(() {
+        _analyticsData = response;
+        _isLoading = false;
+      });
+      _animController.forward(from: 0);
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Failed to load analytics data: $e';
+        _isLoading = false;
+      });
+    }
   }
 
   @override
@@ -69,8 +95,9 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
   }
 
   void _onRangeChange(String range) {
+    if (_timeRange == range) return;
     setState(() => _timeRange = range);
-    _animController.forward(from: 0);
+    _fetchAnalytics();
   }
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -79,6 +106,30 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
   @override
   Widget build(BuildContext context) {
     final hPad = _BP.hPad(context);
+
+    Widget content;
+    if (_isLoading) {
+      content = const Center(
+        child: Padding(
+          padding: EdgeInsets.all(40.0),
+          child: CircularProgressIndicator(color: AppColors.orange),
+        ),
+      );
+    } else if (_errorMessage != null) {
+      content = Center(
+        child: Padding(
+          padding: const EdgeInsets.all(40.0),
+          child: Text(
+            _errorMessage!,
+            style: const TextStyle(color: AppColors.danger),
+          ),
+        ),
+      );
+    } else {
+      content = _BP.isWide(context)
+          ? _buildWideLayout(context)
+          : _buildMobileLayout(context);
+    }
 
     return SafeArea(
       child: FadeTransition(
@@ -97,9 +148,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
                     const SizedBox(height: 20),
                     _buildTimeRangeFilter(context),
                     const SizedBox(height: 28),
-                    _BP.isWide(context)
-                        ? _buildWideLayout(context)
-                        : _buildMobileLayout(context),
+                    content,
                   ],
                 ),
               ),
@@ -238,32 +287,64 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
             ),
           ],
         ),
-        _HoverCard(
-          onTap: () => _showExportSheet(context),
-          borderColor: AppColors.border,
-          hoverBorderColor: AppColors.info,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppColors.bgDark,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.download_rounded, color: AppColors.info, size: 15),
-                SizedBox(width: 6),
-                Text(
-                  'Export',
-                  style: TextStyle(
-                    color: AppColors.info,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
+        Row(
+          children: [
+            _HoverCard(
+              onTap: _fetchAnalytics,
+              borderColor: AppColors.border,
+              hoverBorderColor: AppColors.success,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.bgDark,
+                  borderRadius: BorderRadius.circular(10),
                 ),
-              ],
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.refresh_rounded, color: AppColors.success, size: 15),
+                    SizedBox(width: 6),
+                    Text(
+                      'Refresh',
+                      style: TextStyle(
+                        color: AppColors.success,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
+            const SizedBox(width: 10),
+            _HoverCard(
+              onTap: () => _showExportSheet(context),
+              borderColor: AppColors.border,
+              hoverBorderColor: AppColors.info,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.bgDark,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.download_rounded, color: AppColors.info, size: 15),
+                    SizedBox(width: 6),
+                    Text(
+                      'Export',
+                      style: TextStyle(
+                        color: AppColors.info,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -297,7 +378,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
 
   // ─── KPI Row ───────────────────────────────────────────────────────────────
   Widget _buildKpiRow(BuildContext context) {
-    final kpis = _getKpis(_timeRange);
+    final kpis = Map<String, dynamic>.from(_analyticsData!['kpis']);
     return Column(
       children: [
         Row(
@@ -353,7 +434,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
 
   // ─── Report Progress ───────────────────────────────────────────────────────
   Widget _buildReportProgressCard(BuildContext context) {
-    final data = _getDailyReports(_timeRange);
+    final data = List<Map<String, dynamic>>.from(_analyticsData!['dailyReports']);
     return _HoverCard(
       onTap: () => _showReportProgressDetail(context, data),
       child: Container(
@@ -383,7 +464,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
             ),
             const SizedBox(height: 4),
             Text(
-              '${data.fold(0, (s, e) => s + (e['count'] as int))} reports in period',
+              '${data.fold(0, (s, e) => s + ((e['count'] as num).toInt()))} reports in period',
               style: const TextStyle(color: Colors.white38, fontSize: 12),
             ),
             const SizedBox(height: 20),
@@ -413,11 +494,11 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
 
   // ─── Verification Rate ─────────────────────────────────────────────────────
   Widget _buildVerificationRateCard(BuildContext context) {
-    final kpis = _getKpis(_timeRange);
-    final total = (kpis['total'] as int).toDouble();
-    final verified = (kpis['verified'] as int).toDouble();
-    final rejected = (kpis['rejected'] as int).toDouble();
-    final pending = (kpis['pending'] as int).toDouble();
+    final kpis = Map<String, dynamic>.from(_analyticsData!['kpis']);
+    final total = (kpis['total'] as num).toDouble();
+    final verified = (kpis['verified'] as num).toDouble();
+    final rejected = (kpis['rejected'] as num).toDouble();
+    final pending = (kpis['pending'] as num).toDouble();
     final verifiedPct = total > 0 ? (verified / total * 100).round() : 0;
     final rejectedPct = total > 0 ? (rejected / total * 100).round() : 0;
     final pendingPct = total > 0 ? (pending / total * 100).round() : 0;
@@ -479,21 +560,21 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
                     color: AppColors.success,
                     label: 'Verified',
                     value: '$verifiedPct%',
-                    count: kpis['verified'] as int,
+                    count: (kpis['verified'] as num).toInt(),
                   ),
                   const SizedBox(height: 10),
                   _DonutLegendRow(
                     color: AppColors.danger,
                     label: 'Rejected',
                     value: '$rejectedPct%',
-                    count: kpis['rejected'] as int,
+                    count: (kpis['rejected'] as num).toInt(),
                   ),
                   const SizedBox(height: 10),
                   _DonutLegendRow(
                     color: AppColors.warning,
                     label: 'Pending',
                     value: '$pendingPct%',
-                    count: kpis['pending'] as int,
+                    count: (kpis['pending'] as num).toInt(),
                   ),
                 ],
               ),
@@ -506,8 +587,16 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
 
   // ─── Disaster Type ─────────────────────────────────────────────────────────
   Widget _buildDisasterTypeCard(BuildContext context) {
-    final types = _getDisasterTypes(_timeRange);
-    final maxCount = types.map((t) => t['count'] as int).reduce(math.max);
+    final types = List<Map<String, dynamic>>.from(_analyticsData!['disasterTypes']).map((t) {
+      final label = t['label'].toString().toLowerCase();
+      Color c = AppColors.success;
+      if (label.contains('flood')) c = AppColors.info;
+      else if (label.contains('landslide')) c = AppColors.warning;
+      else if (label.contains('fire')) c = AppColors.danger;
+      else if (label.contains('earthquake')) c = AppColors.orange;
+      return {...t, 'color': c};
+    }).toList();
+    final maxCount = types.isEmpty ? 0 : types.map((t) => (t['count'] as num).toInt()).reduce(math.max);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -519,7 +608,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
       child: Column(
         children:
             types.map((type) {
-              final count = type['count'] as int;
+              final count = (type['count'] as num).toInt();
               final pct = maxCount > 0 ? count / maxCount : 0.0;
               return _HoverRow(
                 onTap: () => _showDisasterTypeDetail(context, type),
@@ -594,7 +683,14 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
 
   // ─── Rescue Team Performance ───────────────────────────────────────────────
   Widget _buildRescueTeamPerformance(BuildContext context) {
-    final teams = _getRescueTeams();
+    final teams = List<Map<String, dynamic>>.from(_analyticsData!['rescueTeams']).map((t) {
+      final type = t['type'].toString().toLowerCase();
+      Color c = AppColors.success;
+      if (type.contains('flood')) c = AppColors.info;
+      else if (type.contains('fire')) c = AppColors.danger;
+      else if (type.contains('search')) c = AppColors.warning;
+      return {...t, 'color': c};
+    }).toList();
     return Column(
       children:
           teams.map((team) {
@@ -677,7 +773,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
 
   // ─── Response Time ─────────────────────────────────────────────────────────
   Widget _buildResponseTimeCard(BuildContext context) {
-    final data = _getResponseTimeData(_timeRange);
+    final data = Map<String, dynamic>.from(_analyticsData!['responseTime']);
     return _HoverCard(
       onTap: () => _showResponseTimeDetail(context, data),
       child: Container(
@@ -739,10 +835,14 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
   }
 
   Widget _buildTimelineBar(Map<String, dynamic> data) {
-    final dispatch = (data['dispatch'] as int).toDouble();
-    final onScene = (data['onScene'] as int).toDouble();
-    final controlled = (data['controlled'] as int).toDouble();
+    final dispatch = (data['dispatch'] as num).toDouble();
+    final onScene = (data['onScene'] as num).toDouble();
+    final controlled = (data['controlled'] as num).toDouble();
     final total = dispatch + onScene + controlled;
+    
+    final dispatchFlex = total > 0 ? (dispatch / total * 100).round() : 1;
+    final onSceneFlex = total > 0 ? (onScene / total * 100).round() : 1;
+    final controlledFlex = total > 0 ? (controlled / total * 100).round() : 1;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -752,38 +852,38 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
           child: Row(
             children: [
               Flexible(
-                flex: (dispatch / total * 100).round(),
+                flex: dispatchFlex,
                 child: TweenAnimationBuilder<double>(
                   tween: Tween(begin: 0, end: 1),
                   duration: const Duration(milliseconds: 900),
                   builder:
                       (_, v, __) => Container(
                         height: 10,
-                        color: AppColors.info.withOpacity(v),
+                        color: AppColors.info.withOpacity(total > 0 ? v : v * 0.2),
                       ),
                 ),
               ),
               Flexible(
-                flex: (onScene / total * 100).round(),
+                flex: onSceneFlex,
                 child: TweenAnimationBuilder<double>(
                   tween: Tween(begin: 0, end: 1),
                   duration: const Duration(milliseconds: 1100),
                   builder:
                       (_, v, __) => Container(
                         height: 10,
-                        color: AppColors.warning.withOpacity(v),
+                        color: AppColors.warning.withOpacity(total > 0 ? v : v * 0.2),
                       ),
                 ),
               ),
               Flexible(
-                flex: (controlled / total * 100).round(),
+                flex: controlledFlex,
                 child: TweenAnimationBuilder<double>(
                   tween: Tween(begin: 0, end: 1),
                   duration: const Duration(milliseconds: 1300),
                   builder:
                       (_, v, __) => Container(
                         height: 10,
-                        color: AppColors.success.withOpacity(v),
+                        color: AppColors.success.withOpacity(total > 0 ? v : v * 0.2),
                       ),
                 ),
               ),
@@ -806,9 +906,9 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
 
   // ─── Community Trust ───────────────────────────────────────────────────────
   Widget _buildCommunityTrustCard(BuildContext context) {
-    final trust = _getCommunityTrust(_timeRange);
-    final upvotes = trust['upvotes'] as int;
-    final downvotes = trust['downvotes'] as int;
+    final trust = Map<String, dynamic>.from(_analyticsData!['communityTrust']);
+    final upvotes = (trust['upvotes'] as num).toInt();
+    final downvotes = (trust['downvotes'] as num).toInt();
     final total = upvotes + downvotes;
     final upPct = total > 0 ? upvotes / total : 0.5;
 
@@ -907,7 +1007,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
 
   // ─── Top Reporters ─────────────────────────────────────────────────────────
   Widget _buildTopReporters(BuildContext context) {
-    final reporters = _getTopReporters();
+    final reporters = List<Map<String, dynamic>>.from(_analyticsData!['topReporters']);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1183,7 +1283,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
   void _showKpiDetail(
     BuildContext context,
     String title,
-    Map<String, int> kpis,
+    Map<String, dynamic> kpis,
   ) {
     _showPanel(
       context: context,
@@ -1196,7 +1296,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
         _DialogRow(
           label: 'Verification Rate',
           value:
-              '${kpis['total']! > 0 ? (kpis['verified']! / kpis['total']! * 100).round() : 0}%',
+              '${(kpis['total'] as num) > 0 ? ((kpis['verified'] as num) / (kpis['total'] as num) * 100).round() : 0}%',
         ),
       ],
     );
@@ -1278,7 +1378,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
         ClipRRect(
           borderRadius: BorderRadius.circular(6),
           child: TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0, end: (team['successRate'] as int) / 100),
+            tween: Tween(begin: 0, end: (team['successRate'] as num).toDouble() / 100),
             duration: const Duration(milliseconds: 900),
             curve: Curves.easeOut,
             builder:
@@ -1326,7 +1426,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
         _DialogRow(
           label: 'Total Avg Duration',
           value:
-              '${(data['dispatch'] as int) + (data['onScene'] as int) + (data['controlled'] as int)} min',
+              '${(data['dispatch'] as num).toInt() + (data['onScene'] as num).toInt() + (data['controlled'] as num).toInt()} min',
         ),
         _DialogRow(label: 'Fastest Response', value: '${data['fastest']} min'),
         _DialogRow(label: 'Slowest Response', value: '${data['slowest']} min'),
@@ -1385,303 +1485,6 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
     );
   }
 
-  // ════════════════════════════════════════════════════════════════════════════
-  //  DATA PROVIDERS — identical to original, zero changes
-  // ════════════════════════════════════════════════════════════════════════════
-
-  Map<String, int> _getKpis(String range) {
-    const data = {
-      '24H': {'total': 8, 'verified': 5, 'rejected': 1, 'pending': 2},
-      '7D': {'total': 42, 'verified': 28, 'rejected': 6, 'pending': 8},
-      '30D': {'total': 138, 'verified': 95, 'rejected': 21, 'pending': 22},
-      '90D': {'total': 391, 'verified': 274, 'rejected': 58, 'pending': 59},
-    };
-    return Map<String, int>.from(data[range]!);
-  }
-
-  List<Map<String, dynamic>> _getDailyReports(String range) {
-    const rawData = {
-      '24H': [
-        {'label': '00:00', 'count': 1, 'showLabel': true},
-        {'label': '04:00', 'count': 0, 'showLabel': false},
-        {'label': '08:00', 'count': 2, 'showLabel': true},
-        {'label': '12:00', 'count': 3, 'showLabel': true},
-        {'label': '16:00', 'count': 1, 'showLabel': false},
-        {'label': '20:00', 'count': 1, 'showLabel': true},
-      ],
-      '7D': [
-        {'label': 'Mon', 'count': 4, 'showLabel': true},
-        {'label': 'Tue', 'count': 7, 'showLabel': true},
-        {'label': 'Wed', 'count': 5, 'showLabel': true},
-        {'label': 'Thu', 'count': 9, 'showLabel': true},
-        {'label': 'Fri', 'count': 6, 'showLabel': true},
-        {'label': 'Sat', 'count': 3, 'showLabel': true},
-        {'label': 'Sun', 'count': 8, 'showLabel': true},
-      ],
-      '30D': [
-        {'label': 'W1', 'count': 28, 'showLabel': true},
-        {'label': 'W2', 'count': 35, 'showLabel': true},
-        {'label': 'W3', 'count': 41, 'showLabel': true},
-        {'label': 'W4', 'count': 34, 'showLabel': true},
-      ],
-      '90D': [
-        {'label': 'Jan', 'count': 118, 'showLabel': true},
-        {'label': 'Feb', 'count': 132, 'showLabel': true},
-        {'label': 'Mar', 'count': 141, 'showLabel': true},
-      ],
-    };
-    return List<Map<String, dynamic>>.from(rawData[range]!);
-  }
-
-  List<Map<String, dynamic>> _getDisasterTypes(String range) {
-    return [
-      {
-        'label': 'Flood',
-        'count':
-            range == '7D'
-                ? 18
-                : range == '30D'
-                ? 56
-                : 8,
-        'color': AppColors.info,
-        'verified': range == '7D' ? 12 : 38,
-        'pending': range == '7D' ? 4 : 12,
-        'avgResponse': 22,
-        'severity': 'High',
-      },
-      {
-        'label': 'Landslide',
-        'count':
-            range == '7D'
-                ? 9
-                : range == '30D'
-                ? 31
-                : 4,
-        'color': AppColors.warning,
-        'verified': range == '7D' ? 6 : 21,
-        'pending': range == '7D' ? 2 : 6,
-        'avgResponse': 35,
-        'severity': 'Critical',
-      },
-      {
-        'label': 'Fire',
-        'count':
-            range == '7D'
-                ? 7
-                : range == '30D'
-                ? 24
-                : 3,
-        'color': AppColors.danger,
-        'verified': range == '7D' ? 5 : 18,
-        'pending': range == '7D' ? 1 : 4,
-        'avgResponse': 18,
-        'severity': 'High',
-      },
-      {
-        'label': 'Earthquake',
-        'count':
-            range == '7D'
-                ? 4
-                : range == '30D'
-                ? 16
-                : 1,
-        'color': AppColors.orange,
-        'verified': range == '7D' ? 3 : 11,
-        'pending': range == '7D' ? 1 : 3,
-        'avgResponse': 45,
-        'severity': 'Critical',
-      },
-      {
-        'label': 'Other',
-        'count':
-            range == '7D'
-                ? 4
-                : range == '30D'
-                ? 11
-                : 2,
-        'color': AppColors.success,
-        'verified': range == '7D' ? 2 : 7,
-        'pending': range == '7D' ? 2 : 4,
-        'avgResponse': 28,
-        'severity': 'Medium',
-      },
-    ];
-  }
-
-  List<Map<String, dynamic>> _getRescueTeams() {
-    return [
-      {
-        'initials': 'FRA',
-        'name': 'Fire Response Team A',
-        'type': 'Fire & Rescue',
-        'color': AppColors.danger,
-        'missions': 24,
-        'successRate': 92,
-        'failed': 2,
-        'avgTime': 18,
-        'controlTime': 45,
-        'status': 'Active',
-      },
-      {
-        'initials': 'FRB',
-        'name': 'Flood Response Team B',
-        'type': 'Flood Response',
-        'color': AppColors.info,
-        'missions': 31,
-        'successRate': 87,
-        'failed': 4,
-        'avgTime': 25,
-        'controlTime': 82,
-        'status': 'Active',
-      },
-      {
-        'initials': 'AU1',
-        'name': 'Ambulance Unit 1',
-        'type': 'Medical Emergency',
-        'color': AppColors.success,
-        'missions': 48,
-        'successRate': 96,
-        'failed': 2,
-        'avgTime': 12,
-        'controlTime': 28,
-        'status': 'Active',
-      },
-      {
-        'initials': 'SAR',
-        'name': 'Search & Rescue Unit',
-        'type': 'Search & Rescue',
-        'color': AppColors.warning,
-        'missions': 17,
-        'successRate': 76,
-        'failed': 4,
-        'avgTime': 38,
-        'controlTime': 120,
-        'status': 'Standby',
-      },
-    ];
-  }
-
-  Map<String, dynamic> _getResponseTimeData(String range) {
-    const data = {
-      '24H': {
-        'dispatch': 8,
-        'onScene': 22,
-        'controlled': 34,
-        'fastest': 5,
-        'slowest': 62,
-      },
-      '7D': {
-        'dispatch': 11,
-        'onScene': 27,
-        'controlled': 48,
-        'fastest': 6,
-        'slowest': 88,
-      },
-      '30D': {
-        'dispatch': 13,
-        'onScene': 31,
-        'controlled': 54,
-        'fastest': 5,
-        'slowest': 140,
-      },
-      '90D': {
-        'dispatch': 14,
-        'onScene': 33,
-        'controlled': 58,
-        'fastest': 5,
-        'slowest': 160,
-      },
-    };
-    return Map<String, dynamic>.from(data[range]!);
-  }
-
-  Map<String, dynamic> _getCommunityTrust(String range) {
-    const data = {
-      '24H': {
-        'upvotes': 87,
-        'downvotes': 12,
-        'reportCount': 8,
-        'avgUpvotes': 11,
-        'avgDownvotes': 2,
-        'topReport': 'RPT-00420',
-      },
-      '7D': {
-        'upvotes': 524,
-        'downvotes': 63,
-        'reportCount': 42,
-        'avgUpvotes': 12,
-        'avgDownvotes': 2,
-        'topReport': 'RPT-00420',
-      },
-      '30D': {
-        'upvotes': 1832,
-        'downvotes': 241,
-        'reportCount': 138,
-        'avgUpvotes': 13,
-        'avgDownvotes': 2,
-        'topReport': 'RPT-00380',
-      },
-      '90D': {
-        'upvotes': 5124,
-        'downvotes': 698,
-        'reportCount': 391,
-        'avgUpvotes': 13,
-        'avgDownvotes': 2,
-        'topReport': 'RPT-00280',
-      },
-    };
-    return Map<String, dynamic>.from(data[range]!);
-  }
-
-  List<Map<String, dynamic>> _getTopReporters() {
-    return [
-      {
-        'name': 'Amit Mahato',
-        'location': 'Ward 5, Dharan',
-        'reports': 14,
-        'trust': 78,
-        'verified': 11,
-        'rejected': 1,
-        'upvotes': 142,
-      },
-      {
-        'name': 'Sita Rai',
-        'location': 'Itahari, Ward 3',
-        'reports': 11,
-        'trust': 85,
-        'verified': 10,
-        'rejected': 0,
-        'upvotes': 128,
-      },
-      {
-        'name': 'Binod Limbu',
-        'location': 'Bhedetar',
-        'reports': 9,
-        'trust': 90,
-        'verified': 9,
-        'rejected': 0,
-        'upvotes': 187,
-      },
-      {
-        'name': 'Nisha Karki',
-        'location': 'Biratnagar',
-        'reports': 8,
-        'trust': 82,
-        'verified': 7,
-        'rejected': 1,
-        'upvotes': 96,
-      },
-      {
-        'name': 'Rajan Thapa',
-        'location': 'Ward 5, Dharan',
-        'reports': 7,
-        'trust': 70,
-        'verified': 5,
-        'rejected': 2,
-        'upvotes': 71,
-      },
-    ];
-  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
