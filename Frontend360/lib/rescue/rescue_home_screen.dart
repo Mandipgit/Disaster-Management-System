@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:disaster360/providers/report_provider.dart';
 import 'package:disaster360/services/notification_alert.dart';
+import 'package:disaster360/colors.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  RESCUE HOME SCREEN — with fixed header only on Home tab

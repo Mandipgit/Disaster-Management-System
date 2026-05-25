@@ -1,141 +1,88 @@
-import 'dart:async';
+
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:provider/provider.dart';
+import 'package:disaster360/providers/report_provider.dart';
+import 'package:geolocator/geolocator.dart';
 
-// ─────────────────────────────────────────────
-//  APP COLORS  (paste from your colors.dart)
-//  → Once integrated, remove this block and
-//    import 'package:your_app/colors.dart';
-// ─────────────────────────────────────────────
-
-class AppColors {
-  AppColors._();
-  static const Color bgPrimary = Color(0xFF0D1117);
-  static const Color bgSurface = Color(0xFF141B27);
-  static const Color bgDark = Color(0xFF1A2030);
-  static const Color border = Color(0xFF1E2A3A);
-  static const Color orange = Color(0xFFFF6B2B);
-  static const Color danger = Color(0xFFFF3B3B);
-  static const Color warning = Color(0xFFFFB800);
-  static const Color success = Color(0xFF00D4AA);
-  static const Color successGreen = Color(0xFF4CAF50);
-  static const Color info = Color(0xFF4D9EFF);
-  static const Color textLight = Colors.white;
-  static const Color textMuted = Colors.white38;
-}
-
-// ─────────────────────────────────────────────
-//  MODELS
-// ─────────────────────────────────────────────
-
-enum DisasterType { flood, landslide, roadblock, earthquake, fire }
-
-enum SeverityLevel { high, moderate, low }
-
-class DisasterIncident {
-  final String id;
-  final String title;
-  final String description;
-  final DisasterType type;
-  final SeverityLevel severity;
-  final LatLng location;
-  final DateTime reportedAt;
-  final String reportedBy;
-  final String district;
-  final String? assignedTeam;
-  final int? affectedPeople;
-  final String? contactNumber;
-  bool isControlled;
-
-  DisasterIncident({
-    required this.id,
-    required this.title,
-    required this.description,
-    required this.type,
-    required this.severity,
-    required this.location,
-    required this.reportedAt,
-    required this.reportedBy,
-    required this.district,
-    this.assignedTeam,
-    this.affectedPeople,
-    this.contactNumber,
-    this.isControlled = false,
-  });
-}
+import 'package:disaster360/colors.dart';
 
 // ─────────────────────────────────────────────
 //  DISASTER STYLE HELPERS  (uses AppColors)
 // ─────────────────────────────────────────────
 
 class DisasterStyle {
-  static Color colorForType(DisasterType t) {
-    switch (t) {
-      case DisasterType.flood:
+  static Color colorForType(String t) {
+    switch (t.toLowerCase()) {
+      case 'flood':
         return AppColors.info;
-      case DisasterType.landslide:
+      case 'landslide':
         return AppColors.warning;
-      case DisasterType.roadblock:
+      case 'roadblock':
+      case 'road block':
         return AppColors.orange;
-      case DisasterType.earthquake:
+      case 'earthquake':
         return AppColors.danger;
-      case DisasterType.fire:
+      case 'fire':
         return const Color(0xFFFF6F00);
+      default:
+        return AppColors.orange;
     }
   }
 
-  static Color zoneColor(DisasterType t) => colorForType(t).withOpacity(0.16);
+  static Color zoneColor(String t) => colorForType(t).withOpacity(0.16);
 
-  static Color severityColor(SeverityLevel s) {
-    switch (s) {
-      case SeverityLevel.high:
+  static Color severityColor(String s) {
+    switch (s.toLowerCase()) {
+      case 'high':
         return AppColors.danger;
-      case SeverityLevel.moderate:
+      case 'moderate':
         return AppColors.warning;
-      case SeverityLevel.low:
+      case 'low':
+        return AppColors.success;
+      default:
         return AppColors.success;
     }
   }
 
-  static IconData iconForType(DisasterType t) {
-    switch (t) {
-      case DisasterType.flood:
-        return Icons.water_rounded;
-      case DisasterType.landslide:
-        return Icons.terrain_rounded;
-      case DisasterType.roadblock:
-        return Icons.block_rounded;
-      case DisasterType.earthquake:
-        return Icons.crisis_alert_rounded;
-      case DisasterType.fire:
-        return Icons.local_fire_department_rounded;
+  static Color statusColor(String s) {
+    switch (s.toLowerCase()) {
+      case 'pending':
+        return AppColors.warning;
+      case 'verified':
+        return AppColors.successGreen;
+      case 'controlled':
+        return Colors.teal;
+      default:
+        return Colors.grey;
     }
   }
 
-  static String labelForType(DisasterType t) {
-    switch (t) {
-      case DisasterType.flood:
-        return 'Flood';
-      case DisasterType.landslide:
-        return 'Landslide';
-      case DisasterType.roadblock:
-        return 'Road Block';
-      case DisasterType.earthquake:
-        return 'Earthquake';
-      case DisasterType.fire:
-        return 'Fire';
+  static IconData iconForType(String t) {
+    switch (t.toLowerCase()) {
+      case 'flood':
+        return Icons.water_rounded;
+      case 'landslide':
+        return Icons.terrain_rounded;
+      case 'roadblock':
+      case 'road block':
+        return Icons.block_rounded;
+      case 'earthquake':
+        return Icons.crisis_alert_rounded;
+      case 'fire':
+        return Icons.local_fire_department_rounded;
+      default:
+        return Icons.warning_amber_rounded;
     }
+  }
+
+  static String labelForType(String t) {
+    return t;
   }
 }
-
-// ─────────────────────────────────────────────
-//  NEPAL-WIDE DEMO INCIDENTS  (20 incidents)
-// ─────────────────────────────────────────────
-
-final List<DisasterIncident> demoIncidents = [];
 
 // ─────────────────────────────────────────────
 //  NEPAL BOUNDS & CENTER
@@ -159,27 +106,54 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
     with TickerProviderStateMixin {
   final MapController _mapController = MapController();
 
-  DisasterType? _activeFilter;
-  DisasterIncident? _selectedIncident;
+  String? _activeFilter;
+  ReportModel? _selectedIncident;
   bool _showLegend = false;
   bool _showZones = true;
   bool _isSatellite = false;
+  LatLng? _myLocation;
 
-  List<DisasterIncident> _incidents = List.from(demoIncidents);
+  Future<void> _locateMe() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location services are disabled.')));
+      return;
+    }
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location permissions are denied.')));
+        return;
+      }
+    }
+    if (permission == LocationPermission.deniedForever) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location permissions are permanently denied.')));
+      return;
+    }
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Locating...')));
+    Position position = await Geolocator.getCurrentPosition();
+    setState(() {
+      _myLocation = LatLng(position.latitude, position.longitude);
+    });
+    _mapController.move(_myLocation!, 14.0);
+  }
 
   late AnimationController _pulseCtrl;
   late AnimationController _panelCtrl;
   late Animation<double> _panelAnim;
 
+  List<ReportModel> get _reports => context.watch<ReportProvider>().reports;
+
   int get _highCount =>
-      _incidents
-          .where((i) => i.severity == SeverityLevel.high && !i.isControlled)
+      _reports
+          .where((i) => i.severity.toLowerCase() == 'high' && i.status.toLowerCase() != 'controlled')
           .length;
   int get _moderateCount =>
-      _incidents
-          .where((i) => i.severity == SeverityLevel.moderate && !i.isControlled)
+      _reports
+          .where((i) => i.severity.toLowerCase() == 'moderate' && i.status.toLowerCase() != 'controlled')
           .length;
-  int get _activeCount => _incidents.where((i) => !i.isControlled).length;
+  int get _activeCount => _reports.where((i) => i.status.toLowerCase() != 'controlled').length;
 
   @override
   void initState() {
@@ -205,16 +179,16 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
     super.dispose();
   }
 
-  List<DisasterIncident> get _filtered =>
-      _incidents.where((i) {
-        if (_activeFilter != null && i.type != _activeFilter) return false;
+  List<ReportModel> get _filtered =>
+      _reports.where((i) {
+        if (_activeFilter != null && i.disasterType.toLowerCase() != _activeFilter!.toLowerCase()) return false;
         return true;
       }).toList();
 
-  void _selectIncident(DisasterIncident inc) {
+  void _selectIncident(ReportModel inc) {
     setState(() => _selectedIncident = inc);
     _panelCtrl.forward();
-    _mapController.move(inc.location, 11.5);
+    _mapController.move(LatLng(inc.latitude, inc.longitude), 11.5);
   }
 
   void _closePanel() {
@@ -236,7 +210,6 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
           if (_showLegend) _buildLegend(),
           _buildMapControls(),
           if (_selectedIncident != null) _buildDetailPanel(),
-          _buildReportFAB(),
         ],
       ),
     );
@@ -294,18 +267,18 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
       circles:
           _filtered.map((inc) {
             final radius =
-                inc.severity == SeverityLevel.high
+                inc.severity.toLowerCase() == 'high'
                     ? 18000.0
-                    : inc.severity == SeverityLevel.moderate
+                    : inc.severity.toLowerCase() == 'moderate'
                     ? 11000.0
                     : 6000.0;
             return CircleMarker(
-              point: inc.location,
+              point: LatLng(inc.latitude, inc.longitude),
               radius: radius,
               useRadiusInMeter: true,
-              color: DisasterStyle.zoneColor(inc.type),
+              color: DisasterStyle.zoneColor(inc.disasterType),
               borderColor: DisasterStyle.colorForType(
-                inc.type,
+                inc.disasterType,
               ).withOpacity(0.4),
               borderStrokeWidth: 1.5,
             );
@@ -314,9 +287,9 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
   }
 
   List<Marker> _buildMarkers() {
-    return _filtered.map((inc) {
+    final markers = _filtered.map((inc) {
       return Marker(
-        point: inc.location,
+        point: LatLng(inc.latitude, inc.longitude),
         width: 54,
         height: 54,
         child: GestureDetector(
@@ -325,7 +298,7 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
             animation: _pulseCtrl,
             builder: (_, child) {
               final pulse =
-                  (inc.severity == SeverityLevel.high && !inc.isControlled)
+                  (inc.severity.toLowerCase() == 'high' && inc.status.toLowerCase() != 'controlled')
                       ? (0.85 + 0.15 * sin(_pulseCtrl.value * 2 * pi))
                       : 1.0;
               return Transform.scale(scale: pulse, child: child);
@@ -338,6 +311,44 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
         ),
       );
     }).toList();
+
+    if (_myLocation != null) {
+      markers.add(
+        Marker(
+          point: _myLocation!,
+          width: 50,
+          height: 50,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: AppColors.info,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black38, blurRadius: 4, spreadRadius: 1),
+                  ],
+                ),
+                child: const Icon(Icons.my_location_rounded, color: Colors.white, size: 16),
+              ),
+              const SizedBox(height: 2),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.bgDark.withOpacity(0.8),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text('You', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return markers;
   }
 
   // ─── TOP BAR ─────────────────────────────────
@@ -517,6 +528,11 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
 
   Widget _buildFilterBar() {
     final top = MediaQuery.of(context).padding.top + 122;
+    final dynamicTypes = _reports.map((e) => e.disasterType).toSet().toList();
+    if (dynamicTypes.isEmpty) {
+      dynamicTypes.addAll(['Flood', 'Landslide', 'Earthquake', 'Fire', 'Roadblock']);
+    }
+    
     return Positioned(
       top: top,
       left: 0,
@@ -536,21 +552,21 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
               count: _activeCount,
             ),
             const SizedBox(width: 8),
-            ...DisasterType.values.map(
+            ...dynamicTypes.map(
               (t) => Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: _FilterChip(
                   label: DisasterStyle.labelForType(t),
                   icon: DisasterStyle.iconForType(t),
                   color: DisasterStyle.colorForType(t),
-                  selected: _activeFilter == t,
+                  selected: _activeFilter?.toLowerCase() == t.toLowerCase(),
                   onTap:
                       () => setState(() {
-                        _activeFilter = _activeFilter == t ? null : t;
+                        _activeFilter = _activeFilter?.toLowerCase() == t.toLowerCase() ? null : t;
                       }),
                   count:
-                      _incidents
-                          .where((i) => i.type == t && !i.isControlled)
+                      _reports
+                          .where((i) => i.disasterType.toLowerCase() == t.toLowerCase() && i.status.toLowerCase() != 'controlled')
                           .length,
                 ),
               ),
@@ -609,7 +625,7 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
               ],
             ),
             const SizedBox(height: 12),
-            ...DisasterType.values.map(
+            ...['Flood', 'Landslide', 'Roadblock', 'Earthquake', 'Fire'].map(
               (t) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Row(
@@ -650,9 +666,9 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
             ),
             const SizedBox(height: 8),
             ...[
-              SeverityLevel.high,
-              SeverityLevel.moderate,
-              SeverityLevel.low,
+              'High',
+              'Moderate',
+              'Low',
             ].map(
               (s) => Padding(
                 padding: const EdgeInsets.only(bottom: 6),
@@ -668,7 +684,7 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      s.name[0].toUpperCase() + s.name.substring(1),
+                      s,
                       style: const TextStyle(
                         color: Colors.white60,
                         fontSize: 12,
@@ -719,7 +735,7 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
           const SizedBox(height: 8),
           _GlassBtn(
             icon: Icons.my_location_rounded,
-            onTap: () => _mapController.move(_nepalCenter, 7.0),
+            onTap: _locateMe,
           ),
           const SizedBox(height: 8),
           _GlassBtn(icon: Icons.list_rounded, onTap: _showIncidentsList),
@@ -732,7 +748,7 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
 
   Widget _buildDetailPanel() {
     final inc = _selectedIncident!;
-    final color = DisasterStyle.colorForType(inc.type);
+    final color = DisasterStyle.colorForType(inc.disasterType);
 
     return Positioned(
       bottom: 0,
@@ -786,7 +802,7 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
                             border: Border.all(color: color.withOpacity(0.4)),
                           ),
                           child: Icon(
-                            DisasterStyle.iconForType(inc.type),
+                            DisasterStyle.iconForType(inc.disasterType),
                             color: color,
                             size: 22,
                           ),
@@ -807,21 +823,19 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
                               const SizedBox(height: 4),
                               Row(
                                 children: [
-                                  _SeverityBadge(severity: inc.severity),
+                                  _Badge(
+                                    label: inc.severity.toUpperCase(),
+                                    color: DisasterStyle.severityColor(inc.severity),
+                                  ),
                                   const SizedBox(width: 6),
-                                  inc.isControlled
-                                      ? _Badge(
-                                        label: 'Controlled',
-                                        color: AppColors.success,
-                                      )
-                                      : _Badge(
-                                        label: 'Active',
-                                        color: AppColors.danger,
-                                      ),
+                                  _Badge(
+                                    label: inc.status,
+                                    color: DisasterStyle.statusColor(inc.status),
+                                  ),
                                   const SizedBox(width: 6),
                                   Flexible(
                                     child: Text(
-                                      inc.district,
+                                      inc.disasterType,
                                       style: const TextStyle(
                                         color: Colors.white38,
                                         fontSize: 11,
@@ -854,29 +868,35 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
                     const SizedBox(height: 14),
 
                     // Description
-                    Text(
-                      inc.description,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.68),
-                        fontSize: 13,
-                        height: 1.55,
+                    if (inc.description.isNotEmpty) ...[
+                      Text(
+                        inc.description,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.68),
+                          fontSize: 13,
+                          height: 1.55,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 14),
+                      const SizedBox(height: 14),
+                    ],
 
                     // Info grid row 1
                     Row(
                       children: [
-                        _InfoTile(
-                          icon: Icons.person_outline_rounded,
-                          label: 'Reported by',
-                          value: inc.reportedBy,
+                        Expanded(
+                          child: _InfoTile(
+                            icon: Icons.person_outline_rounded,
+                            label: 'Reported by',
+                            value: inc.userName,
+                          ),
                         ),
                         const SizedBox(width: 10),
-                        _InfoTile(
-                          icon: Icons.access_time_rounded,
-                          label: 'Reported',
-                          value: _timeAgo(inc.reportedAt),
+                        Expanded(
+                          child: _InfoTile(
+                            icon: Icons.access_time_rounded,
+                            label: 'Reported',
+                            value: _timeAgo(DateTime.tryParse(inc.createdAt) ?? DateTime.now()),
+                          ),
                         ),
                       ],
                     ),
@@ -885,32 +905,13 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
                     // Info grid row 2
                     Row(
                       children: [
-                        if (inc.affectedPeople != null) ...[
-                          Expanded(
-                            child: _InfoTile(
-                              icon: Icons.people_alt_outlined,
-                              label: 'Affected',
-                              value: '~${inc.affectedPeople} people',
-                            ),
+                        Expanded(
+                          child: _InfoTile(
+                            icon: Icons.group_outlined,
+                            label: 'Merged Reports',
+                            value: inc.submissions.length > 1 ? '${inc.submissions.length} reports' : '1 report',
                           ),
-                          const SizedBox(width: 10),
-                        ],
-                        if (inc.assignedTeam != null)
-                          Expanded(
-                            child: _InfoTile(
-                              icon: Icons.groups_rounded,
-                              label: 'Assigned team',
-                              value: inc.assignedTeam!,
-                            ),
-                          )
-                        else
-                          Expanded(
-                            child: _InfoTile(
-                              icon: Icons.location_on_outlined,
-                              label: 'District',
-                              value: inc.district,
-                            ),
-                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -926,43 +927,9 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
                             onTap:
                                 () => launchUrl(
                                   Uri.parse(
-                                    'https://www.google.com/maps/dir/?api=1&destination=${inc.location.latitude},${inc.location.longitude}',
+                                    'https://www.google.com/maps/dir/?api=1&destination=${inc.latitude},${inc.longitude}',
                                   ),
                                 ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        if (inc.contactNumber != null) ...[
-                          Expanded(
-                            child: _ActionBtn(
-                              label: 'Call Office',
-                              icon: Icons.call_rounded,
-                              color: AppColors.success,
-                              onTap:
-                                  () => launchUrl(
-                                    Uri.parse('tel:${inc.contactNumber}'),
-                                  ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        Expanded(
-                          child: _ActionBtn(
-                            label: inc.isControlled ? 'Reopen' : 'Controlled',
-                            icon:
-                                inc.isControlled
-                                    ? Icons.undo_rounded
-                                    : Icons.check_circle_outline_rounded,
-                            color:
-                                inc.isControlled
-                                    ? AppColors.warning
-                                    : AppColors.successGreen,
-                            onTap: () {
-                              setState(
-                                () => inc.isControlled = !inc.isControlled,
-                              );
-                              _closePanel();
-                            },
                           ),
                         ),
                       ],
@@ -1062,7 +1029,8 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
                                   Divider(color: AppColors.border, height: 1),
                           itemBuilder: (_, i) {
                             final inc = _filtered[i];
-                            final color = DisasterStyle.colorForType(inc.type);
+                            final color = DisasterStyle.colorForType(inc.disasterType);
+                            final isControlled = inc.status.toLowerCase() == 'controlled';
                             return ListTile(
                               contentPadding: const EdgeInsets.symmetric(
                                 vertical: 8,
@@ -1078,7 +1046,7 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
                                   ),
                                 ),
                                 child: Icon(
-                                  DisasterStyle.iconForType(inc.type),
+                                  DisasterStyle.iconForType(inc.disasterType),
                                   color: color,
                                   size: 20,
                                 ),
@@ -1098,7 +1066,7 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
                                     _SeverityBadge(severity: inc.severity),
                                     const SizedBox(width: 6),
                                     Text(
-                                      inc.district,
+                                      inc.disasterType,
                                       style: const TextStyle(
                                         color: Colors.white38,
                                         fontSize: 11,
@@ -1106,7 +1074,7 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
                                     ),
                                     const SizedBox(width: 4),
                                     Text(
-                                      '· ${_timeAgo(inc.reportedAt)}',
+                                      '· ${_timeAgo(DateTime.tryParse(inc.createdAt) ?? DateTime.now())}',
                                       style: const TextStyle(
                                         color: Colors.white24,
                                         fontSize: 11,
@@ -1116,7 +1084,7 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
                                 ),
                               ),
                               trailing:
-                                  inc.isControlled
+                                  isControlled
                                       ? Icon(
                                         Icons.check_circle_rounded,
                                         color: AppColors.success,
@@ -1142,318 +1110,6 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
     );
   }
 
-  // ─── REPORT FAB ──────────────────────────────
-
-  Widget _buildReportFAB() {
-    return Positioned(
-      bottom: MediaQuery.of(context).padding.bottom + 24,
-      left: 20,
-      child: GestureDetector(
-        onTap: _showReportDialog,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [AppColors.danger, Color(0xFFB71C1C)],
-            ),
-            borderRadius: BorderRadius.circular(50),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.danger.withOpacity(0.4),
-                blurRadius: 18,
-                spreadRadius: 2,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: const Row(
-            children: [
-              Icon(Icons.add_alert_rounded, color: Colors.white, size: 18),
-              SizedBox(width: 8),
-              Text(
-                'Report Incident',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                  letterSpacing: 0.2,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ─── REPORT DIALOG ───────────────────────────
-
-  void _showReportDialog() {
-    DisasterType selType = DisasterType.flood;
-    SeverityLevel selSeverity = SeverityLevel.moderate;
-    final titleCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
-    final districtCtrl = TextEditingController();
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder:
-          (ctx) => StatefulBuilder(
-            builder:
-                (ctx, setS) => Padding(
-                  padding: EdgeInsets.only(
-                    bottom: MediaQuery.of(ctx).viewInsets.bottom,
-                  ),
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
-                    decoration: BoxDecoration(
-                      color: AppColors.bgSurface,
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(24),
-                      ),
-                    ),
-                    child: SingleChildScrollView(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Text(
-                                'Report New Incident',
-                                style: TextStyle(
-                                  color: AppColors.textLight,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const Spacer(),
-                              GestureDetector(
-                                onTap: () => Navigator.pop(ctx),
-                                child: const Icon(
-                                  Icons.close_rounded,
-                                  color: Colors.white54,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 20),
-
-                          // Type
-                          _FormLabel('Disaster Type'),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children:
-                                DisasterType.values.map((t) {
-                                  final sel = selType == t;
-                                  final c = DisasterStyle.colorForType(t);
-                                  return GestureDetector(
-                                    onTap: () => setS(() => selType = t),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 8,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color:
-                                            sel
-                                                ? c.withOpacity(0.18)
-                                                : Colors.white.withOpacity(
-                                                  0.05,
-                                                ),
-                                        borderRadius: BorderRadius.circular(10),
-                                        border: Border.all(
-                                          color:
-                                              sel
-                                                  ? c
-                                                  : Colors.white.withOpacity(
-                                                    0.1,
-                                                  ),
-                                        ),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            DisasterStyle.iconForType(t),
-                                            color: sel ? c : Colors.white38,
-                                            size: 14,
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            DisasterStyle.labelForType(t),
-                                            style: TextStyle(
-                                              color:
-                                                  sel
-                                                      ? Colors.white
-                                                      : Colors.white54,
-                                              fontSize: 12,
-                                              fontWeight:
-                                                  sel
-                                                      ? FontWeight.w600
-                                                      : FontWeight.w400,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                          ),
-
-                          const SizedBox(height: 16),
-                          _FormLabel('Severity'),
-                          const SizedBox(height: 8),
-                          Row(
-                            children:
-                                [
-                                  SeverityLevel.low,
-                                  SeverityLevel.moderate,
-                                  SeverityLevel.high,
-                                ].map((s) {
-                                  final sel = selSeverity == s;
-                                  final c = DisasterStyle.severityColor(s);
-                                  return Expanded(
-                                    child: GestureDetector(
-                                      onTap: () => setS(() => selSeverity = s),
-                                      child: Container(
-                                        margin: const EdgeInsets.only(right: 8),
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 10,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color:
-                                              sel
-                                                  ? c.withOpacity(0.18)
-                                                  : Colors.white.withOpacity(
-                                                    0.05,
-                                                  ),
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                          border: Border.all(
-                                            color:
-                                                sel
-                                                    ? c
-                                                    : Colors.white.withOpacity(
-                                                      0.1,
-                                                    ),
-                                          ),
-                                        ),
-                                        child: Text(
-                                          s.name[0].toUpperCase() +
-                                              s.name.substring(1),
-                                          textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            color: sel ? c : Colors.white38,
-                                            fontSize: 12,
-                                            fontWeight:
-                                                sel
-                                                    ? FontWeight.w600
-                                                    : FontWeight.w400,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                          ),
-
-                          const SizedBox(height: 16),
-                          _FormLabel('Incident Title'),
-                          const SizedBox(height: 8),
-                          _DarkField(
-                            controller: titleCtrl,
-                            hint: 'e.g. Bagmati River Overflow',
-                          ),
-                          const SizedBox(height: 12),
-                          _FormLabel('District'),
-                          const SizedBox(height: 8),
-                          _DarkField(
-                            controller: districtCtrl,
-                            hint: 'e.g. Kathmandu',
-                          ),
-                          const SizedBox(height: 12),
-                          _FormLabel('Description'),
-                          const SizedBox(height: 8),
-                          _DarkField(
-                            controller: descCtrl,
-                            hint: 'Describe the situation, affected people…',
-                            maxLines: 3,
-                          ),
-                          const SizedBox(height: 20),
-
-                          // Submit
-                          SizedBox(
-                            width: double.infinity,
-                            child: GestureDetector(
-                              onTap: () {
-                                if (titleCtrl.text.trim().isEmpty) return;
-                                final center = _mapController.camera.center;
-                                setState(() {
-                                  _incidents.add(
-                                    DisasterIncident(
-                                      id:
-                                          DateTime.now().millisecondsSinceEpoch
-                                              .toString(),
-                                      title: titleCtrl.text.trim(),
-                                      description:
-                                          descCtrl.text.trim().isEmpty
-                                              ? 'No description provided.'
-                                              : descCtrl.text.trim(),
-                                      type: selType,
-                                      severity: selSeverity,
-                                      location: center,
-                                      reportedAt: DateTime.now(),
-                                      reportedBy: 'Citizen Report',
-                                      district:
-                                          districtCtrl.text.trim().isEmpty
-                                              ? 'Unknown'
-                                              : districtCtrl.text.trim(),
-                                    ),
-                                  );
-                                });
-                                Navigator.pop(ctx);
-                                _selectIncident(_incidents.last);
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 15,
-                                ),
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      AppColors.danger,
-                                      Color(0xFFB71C1C),
-                                    ],
-                                  ),
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                child: const Text(
-                                  'Submit Report',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 15,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-          ),
-    );
-  }
-
   String _timeAgo(DateTime dt) {
     final d = DateTime.now().difference(dt);
     if (d.inMinutes < 60) return '${d.inMinutes}m ago';
@@ -1462,18 +1118,17 @@ class _DisasterMapScreenState extends State<DisasterMapScreen>
   }
 }
 
-// ─────────────────────────────────────────────
-//  REUSABLE WIDGETS
-// ─────────────────────────────────────────────
+// ─── REUSABLE WIDGETS ──────────────────────────────
 
 class _MarkerWidget extends StatelessWidget {
-  final DisasterIncident incident;
+  final ReportModel incident;
   final bool isSelected;
   const _MarkerWidget({required this.incident, required this.isSelected});
 
   @override
   Widget build(BuildContext context) {
-    final color = DisasterStyle.colorForType(incident.type);
+    final color = DisasterStyle.colorForType(incident.disasterType);
+    final isControlled = incident.status.toLowerCase() == 'controlled';
     return Stack(
       alignment: Alignment.center,
       children: [
@@ -1491,11 +1146,11 @@ class _MarkerWidget extends StatelessWidget {
           width: 38,
           height: 38,
           decoration: BoxDecoration(
-            color: incident.isControlled ? const Color(0xFF3A3A3A) : color,
+            color: isControlled ? const Color(0xFF3A3A3A) : color,
             borderRadius: BorderRadius.circular(11),
             boxShadow: [
               BoxShadow(
-                color: (incident.isControlled ? Colors.grey : color)
+                color: (isControlled ? Colors.grey : color)
                     .withOpacity(0.4),
                 blurRadius: 8,
                 spreadRadius: 1,
@@ -1503,14 +1158,14 @@ class _MarkerWidget extends StatelessWidget {
             ],
           ),
           child: Icon(
-            incident.isControlled
+            isControlled
                 ? Icons.check_rounded
-                : DisasterStyle.iconForType(incident.type),
+                : DisasterStyle.iconForType(incident.disasterType),
             color: Colors.white,
             size: 19,
           ),
         ),
-        if (!incident.isControlled)
+        if (!isControlled)
           Positioned(
             top: 8,
             right: 8,
@@ -1687,13 +1342,13 @@ class _FilterChip extends StatelessWidget {
 }
 
 class _SeverityBadge extends StatelessWidget {
-  final SeverityLevel severity;
+  final String severity;
   const _SeverityBadge({required this.severity});
 
   @override
   Widget build(BuildContext context) {
     final color = DisasterStyle.severityColor(severity);
-    final label = severity.name[0].toUpperCase() + severity.name.substring(1);
+    final label = severity.toUpperCase();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
@@ -1901,56 +1556,6 @@ class _PulseDotState extends State<_PulseDot>
               shape: BoxShape.circle,
             ),
           ),
-    );
-  }
-}
-
-class _FormLabel extends StatelessWidget {
-  final String text;
-  const _FormLabel(this.text);
-  @override
-  Widget build(BuildContext context) =>
-      Text(text, style: const TextStyle(color: Colors.white60, fontSize: 12));
-}
-
-class _DarkField extends StatelessWidget {
-  final TextEditingController controller;
-  final String hint;
-  final int maxLines;
-  const _DarkField({
-    required this.controller,
-    required this.hint,
-    this.maxLines = 1,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      maxLines: maxLines,
-      style: const TextStyle(color: AppColors.textLight, fontSize: 14),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
-        filled: true,
-        fillColor: Colors.white.withOpacity(0.05),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.border),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.border),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.orange),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 12,
-        ),
-      ),
     );
   }
 }

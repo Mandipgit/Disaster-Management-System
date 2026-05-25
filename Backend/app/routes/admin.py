@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 # pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session
+
 # pyrefly: ignore [missing-import]
 from pydantic import BaseModel
 from typing import Optional, List
@@ -36,6 +37,7 @@ class ReportUpdateRequest(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     severity: Optional[str] = None
+
 
 
 # pyrefly: ignore [missing-import]

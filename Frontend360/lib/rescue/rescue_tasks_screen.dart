@@ -1,9 +1,10 @@
 import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:disaster360/colors.dart';
 import 'package:disaster360/rescue/rescue_disaster_report.dart';
 import 'package:disaster360/rescue/rescue_mark_controlled.dart';
 import 'package:disaster360/rescue/rescue_motion.dart';
-import 'package:flutter/material.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  RESCUE TASKS SCREEN — Disaster360
@@ -956,11 +957,14 @@ class _ImageViewerOverlayState extends State<_ImageViewerOverlay>
   late Animation<double> _fadeAnim;
   int _currentIndex = 0;
 
+  late FocusNode _focusNode;
+
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
     _pageCtrl = PageController(initialPage: widget.initialIndex);
+    _focusNode = FocusNode()..requestFocus();
 
     _fadeCtrl = AnimationController(
       vsync: this,
@@ -972,6 +976,7 @@ class _ImageViewerOverlayState extends State<_ImageViewerOverlay>
 
   @override
   void dispose() {
+    _focusNode.dispose();
     _pageCtrl.dispose();
     _fadeCtrl.dispose();
     super.dispose();
@@ -987,7 +992,35 @@ class _ImageViewerOverlayState extends State<_ImageViewerOverlay>
   Widget build(BuildContext context) {
     return FadeTransition(
       opacity: _fadeAnim,
-      child: Stack(
+      child: Focus(
+        focusNode: _focusNode,
+        autofocus: true,
+        onKeyEvent: (node, event) {
+          if (event is KeyDownEvent) {
+            if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+              if (_currentIndex > 0) {
+                _pageCtrl.previousPage(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                );
+              }
+              return KeyEventResult.handled;
+            } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+              if (_currentIndex < widget.photoCount - 1) {
+                _pageCtrl.nextPage(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                );
+              }
+              return KeyEventResult.handled;
+            } else if (event.logicalKey == LogicalKeyboardKey.escape) {
+              _close();
+              return KeyEventResult.handled;
+            }
+          }
+          return KeyEventResult.ignored;
+        },
+        child: Stack(
         children: [
           // Blurred + darkened background
           GestureDetector(
@@ -1040,6 +1073,52 @@ class _ImageViewerOverlayState extends State<_ImageViewerOverlay>
               );
             },
           ),
+
+          // Next/Prev Arrows (Desktop navigation)
+          if (widget.photoCount > 1) ...[
+            if (_currentIndex > 0)
+              Positioned(
+                left: 20,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: IconButton(
+                    icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 28),
+                    onPressed: () {
+                      _pageCtrl.previousPage(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                    },
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black45,
+                      padding: const EdgeInsets.all(16),
+                    ),
+                  ),
+                ),
+              ),
+            if (_currentIndex < widget.photoCount - 1)
+              Positioned(
+                right: 20,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: IconButton(
+                    icon: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 28),
+                    onPressed: () {
+                      _pageCtrl.nextPage(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                    },
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black45,
+                      padding: const EdgeInsets.all(16),
+                    ),
+                  ),
+                ),
+              ),
+          ],
 
           // Top bar: report ID (left), counter (center), close button (right)
           Positioned(
@@ -1140,8 +1219,9 @@ class _ImageViewerOverlayState extends State<_ImageViewerOverlay>
             ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
