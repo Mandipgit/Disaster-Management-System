@@ -174,7 +174,7 @@ class _CitizenProfileScreenState extends State<CitizenProfileScreen> {
       _InfoRow(label: 'Phone', value: phone),
       _InfoRow(label: 'Citizenship No.', value: citizenshipNo),
       _InfoRow(label: 'Issue Dist.', value: issueDistrict),
-      _InfoRow(label: 'Issue Date (A.D.)', value: issueDate),
+      _InfoRow(label: 'Issue Date (B.S.)', value: issueDate),
     ];
 
     return Container(

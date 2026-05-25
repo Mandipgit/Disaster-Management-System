@@ -27,13 +27,15 @@ import os
 load_dotenv()
 router = APIRouter(prefix="/reports", tags=["Reports/Incidents"])
 
-client = Client(api_key=os.environ.get("GOOGLE_API_KEY"))
-
 def get_embedding(text: str) -> list[float]:
     # Check if API key is missing from environment instead of checking the client object
-    if not os.environ.get("GOOGLE_API_KEY"):
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key or api_key == "dummy_key_for_local_development":
         return [0.0] * 1536
+    
     try:
+        # Initialize client inside the function so it picks up .env changes
+        client = Client(api_key=api_key)
         result = client.models.embed_content(
             model="gemini-embedding-001",
             contents=text,
@@ -134,8 +136,8 @@ def create_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    DISASTER_RADIUS_KM = {"flood": 15.0, "landslide": 2.0, "earthquake": 50.0, "fire": 1.0, "default": 5.0}
-    TEXT_THRESHOLD = 0.8
+    DISASTER_RADIUS_KM = {"flood": 15.0, "landslide": 5.0, "earthquake": 50.0, "fire": 2.0, "default": 5.0}
+    TEXT_THRESHOLD = 0.75
 
     RADIUS_KM = DISASTER_RADIUS_KM.get(payload.disaster_type.lower(), DISASTER_RADIUS_KM["default"])
     embedding = get_embedding(f"{payload.title}. {payload.description}")
@@ -269,20 +271,20 @@ def get_nearby_reports(lat: float, lon: float, radius: float = 5.0, db: Session 
 
 @router.delete("/{report_id}")
 def delete_own_report(report_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    report = db.query(Report).filter(Report.id == report_id).first()
-    if not report: raise HTTPException(status_code=404, detail="Report not found")
-    if report.user_id != current_user.id: raise HTTPException(status_code=403, detail="Not your report")
+    # Note: report_id from the frontend is actually the Incident ID
+    reports = db.query(Report).filter(Report.incident_id == report_id, Report.user_id == current_user.id).all()
+    if not reports: raise HTTPException(status_code=404, detail="Report not found or not yours")
     
-    incident_id = report.incident_id
-    db.delete(report)
+    for report in reports:
+        db.delete(report)
     db.commit()
     
-    inc = db.query(Incident).filter(Incident.id == incident_id).first()
+    inc = db.query(Incident).filter(Incident.id == report_id).first()
     if inc and len(inc.reports) == 0:
         db.delete(inc)
         db.commit()
     elif inc:
-        inc.sources -= 1
+        inc.sources -= len(reports)
         db.commit()
         
     return {"message": "Report deleted successfully"}
@@ -304,16 +306,24 @@ def update_report(
     inc = db.query(Incident).filter(Incident.id == report_id).first()
     if not inc: raise HTTPException(status_code=404, detail="Incident not found")
     
+    # Check if the user is authorized (must be a reporter on this incident or an admin)
+    user_report = db.query(Report).filter(Report.incident_id == report_id, Report.user_id == current_user.id).first()
+    if not user_report and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to update this incident")
+    
     if payload.disaster_type: inc.disaster_type = payload.disaster_type
     if payload.title: inc.title = payload.title
-    if payload.description: inc.description = payload.description
+    if payload.description: 
+        inc.description = payload.description
+        if user_report:
+            user_report.description = payload.description
     if payload.location: inc.location = payload.location
     if payload.latitude: inc.latitude = payload.latitude
     if payload.longitude: inc.longitude = payload.longitude
     if payload.severity: inc.severity = payload.severity
     db.commit()
     db.refresh(inc)
-    return {"message": "Incident updated", "report_id": inc.id}
+    return {"message": "Incident and report updated", "report_id": inc.id}
 
 @router.post("/{report_id}/react")
 def react_to_report(

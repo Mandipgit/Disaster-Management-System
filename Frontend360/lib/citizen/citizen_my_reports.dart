@@ -69,14 +69,6 @@ class _CitizenMyReportsScreenState extends State<CitizenMyReportsScreen> {
                         final report = _getFilteredReports(context)[index];
                         return _ReportCard(
                           data: report,
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => CitizenReportDetailScreen(report: report),
-                              ),
-                            );
-                          },
                         );
                       },
                     ),
@@ -254,15 +246,41 @@ class _CitizenMyReportsScreenState extends State<CitizenMyReportsScreen> {
 
 class _ReportCard extends StatelessWidget {
   final ReportModel data;
-  final VoidCallback onTap;
 
-  const _ReportCard({required this.data, required this.onTap});
+  const _ReportCard({required this.data});
+
+  void _showFullScreenImage(BuildContext context, String imageUrl) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(10),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            InteractiveViewer(
+              panEnabled: true,
+              minScale: 0.5,
+              maxScale: 4,
+              child: Image.network(imageUrl, fit: BoxFit.contain),
+            ),
+            Positioned(
+              top: 10,
+              right: 10,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                onPressed: () => Navigator.pop(ctx),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
+    return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: AppColors.bgSurface,
@@ -323,18 +341,21 @@ class _ReportCard extends StatelessWidget {
                   itemCount: data.mediaUrls.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 8),
                   itemBuilder: (context, index) {
-                    return ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        data.mediaUrls[index],
-                        width: 80,
-                        height: 80,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
+                    return GestureDetector(
+                      onTap: () => _showFullScreenImage(context, data.mediaUrls[index]),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          data.mediaUrls[index],
                           width: 80,
                           height: 80,
-                          color: Colors.white12,
-                          child: const Icon(Icons.broken_image, color: Colors.white38),
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            width: 80,
+                            height: 80,
+                            color: Colors.white12,
+                            child: const Icon(Icons.broken_image, color: Colors.white38),
+                          ),
                         ),
                       ),
                     );
@@ -402,8 +423,7 @@ class _ReportCard extends StatelessWidget {
             ],
           ],
         ),
-      ),
-    );
+      );
   }
 
   void _showDeleteConfirm(BuildContext context) {
