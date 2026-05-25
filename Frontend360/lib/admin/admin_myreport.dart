@@ -573,17 +573,10 @@ class _AdminReportCardState extends State<_AdminReportCard> {
             reasonController: rc,
             onConfirmReject: (reason) {
               Navigator.pop(context);
-              setState(() => _cardState = 'rejected');
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('${widget.report.reportId} rejected.'),
-                  backgroundColor: AppColors.danger,
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              );
+              final intId = int.tryParse(widget.report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
+              if (intId != null) {
+                context.read<ReportProvider>().rejectReportWithInlineUndo(intId);
+              }
             },
           ),
     );
@@ -610,8 +603,82 @@ class _AdminReportCardState extends State<_AdminReportCard> {
     transitionDuration: const Duration(milliseconds: 300),
   );
 
+  Widget _buildInlineUndoCard(BuildContext context, int intId) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppColors.danger.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.danger.withOpacity(0.3), width: 1),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.danger.withOpacity(0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.delete_outline, color: AppColors.danger, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${widget.report.reportId} Rejected',
+                        style: const TextStyle(
+                          color: AppColors.danger,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Deleting permanently in 5s...',
+                        style: TextStyle(
+                          color: AppColors.danger.withOpacity(0.8),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: () {
+              context.read<ReportProvider>().undoInlineRejection(intId);
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
+              backgroundColor: AppColors.success,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('UNDO', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final intId = int.tryParse(widget.report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
+    final isPendingRejection = intId != null && context.watch<ReportProvider>().pendingRejections.contains(intId);
+
+    if (isPendingRejection) {
+      return _buildInlineUndoCard(context, intId);
+    }
+
     final report = widget.report;
     final bool isPending =
         report.status == 'Pending' && _cardState == 'pending';

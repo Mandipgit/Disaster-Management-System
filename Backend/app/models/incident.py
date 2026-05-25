@@ -1,5 +1,7 @@
+# pyrefly: ignore [missing-import]
 from sqlalchemy import Column, Integer, String, Text, Float, DateTime, Boolean
 from datetime import datetime, timezone
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import relationship
 from ..database import Base
 
@@ -24,4 +26,5 @@ class Incident(Base):
 
     reports = relationship("Report", back_populates="incident", cascade="all, delete-orphan")
     reactions = relationship("ReportReaction", back_populates="incident", cascade="all, delete-orphan")
+    assignments = relationship("IncidentAssignment", back_populates="incident", cascade="all, delete-orphan")
     media = relationship("ReportMedia", backref="incident", cascade="all, delete-orphan")

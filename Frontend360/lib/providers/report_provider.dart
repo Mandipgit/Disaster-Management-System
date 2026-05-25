@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:disaster360/services/api_service.dart';
+import 'dart:async';
 
 class ReportModel {
   final int id;
@@ -64,9 +65,13 @@ class ReportModel {
 class ReportProvider extends ChangeNotifier {
   final ApiService _apiService = ApiService();
   List<ReportModel> _reports = [];
+  List<Map<String, dynamic>> _activeRescues = [];
+  List<Map<String, dynamic>> _duplicateReports = [];
   bool _isLoading = false;
 
   List<ReportModel> get reports => _reports;
+  List<Map<String, dynamic>> get activeRescues => _activeRescues;
+  List<Map<String, dynamic>> get duplicateReports => _duplicateReports;
   bool get isLoading => _isLoading;
 
   Future<void> fetchReports() async {
@@ -83,6 +88,30 @@ class ReportProvider extends ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> fetchActiveRescues() async {
+    try {
+      final response = await _apiService.get('/admin/active-rescues');
+      if (response is List) {
+        _activeRescues = List<Map<String, dynamic>>.from(response);
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint("Error fetching active rescues: $e");
+    }
+  }
+
+  Future<void> fetchDuplicateReports() async {
+    try {
+      final response = await _apiService.get('/admin/duplicate-reports');
+      if (response is List) {
+        _duplicateReports = List<Map<String, dynamic>>.from(response);
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint("Error fetching duplicate reports: $e");
     }
   }
 
@@ -115,6 +144,39 @@ class ReportProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('Error deleting report: $e');
       rethrow;
+    }
+  }
+
+  final Map<int, Timer> _rejectionTimers = {};
+  Set<int> get pendingRejections => _rejectionTimers.keys.toSet();
+
+  void rejectReportWithInlineUndo(int reportId) {
+    if (_rejectionTimers.containsKey(reportId)) return;
+    
+    // Start a 5-second timer
+    _rejectionTimers[reportId] = Timer(const Duration(seconds: 5), () async {
+      _rejectionTimers.remove(reportId);
+      
+      try {
+        await _apiService.delete('/admin/reports/$reportId');
+        // Successfully deleted, remove from the list
+        _reports.removeWhere((r) => r.id == reportId);
+        notifyListeners();
+      } catch (e) {
+        // Deletion failed, revert the pending state so the card shows again
+        debugPrint("Failed to delete $reportId: $e");
+        notifyListeners();
+      }
+    });
+    
+    notifyListeners(); // Rebuild UI to show the inline banner
+  }
+
+  void undoInlineRejection(int reportId) {
+    if (_rejectionTimers.containsKey(reportId)) {
+      _rejectionTimers[reportId]?.cancel();
+      _rejectionTimers.remove(reportId);
+      notifyListeners();
     }
   }
 

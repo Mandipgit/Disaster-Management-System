@@ -66,7 +66,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<ReportProvider>().fetchReports();
+      final provider = context.read<ReportProvider>();
+      provider.fetchReports();
+      provider.fetchActiveRescues();
+      provider.fetchDuplicateReports();
     });
     _pageEntryCtrl = AnimationController(
       vsync: this,
@@ -101,6 +104,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     // so the list is always in sync with the database.
     if (index == 1) {
       context.read<ReportProvider>().fetchReports();
+    } else if (index == 0) {
+      final provider = context.read<ReportProvider>();
+      provider.fetchReports();
+      provider.fetchActiveRescues();
+      provider.fetchDuplicateReports();
     }
   }
 
@@ -450,6 +458,13 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             ? _twoColumnGrid(
               reports.map((report) {
                 final adminReport = _toAdminReportData(report);
+                final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
+                final isPendingRejection = intId != null && reportProvider.pendingRejections.contains(intId);
+
+                if (isPendingRejection) {
+                  return _buildInlineUndoCard(context, report, intId);
+                }
+
                 return _AnimatedPendingCard(
                   report: report,
                   onTap:
@@ -495,6 +510,16 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               children:
                   reports.map((report) {
                     final adminReport = _toAdminReportData(report);
+                    final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
+                    final isPendingRejection = intId != null && reportProvider.pendingRejections.contains(intId);
+
+                    if (isPendingRejection) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _buildInlineUndoCard(context, report, intId),
+                      );
+                    }
+
                     return _AnimatedPendingCard(
                       report: report,
                       onTap:
@@ -541,101 +566,126 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     );
   }
 
+  Widget _buildInlineUndoCard(BuildContext context, _PendingReportData report, int intId) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppColors.danger.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.danger.withOpacity(0.3), width: 1),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.danger.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.delete_outline, color: AppColors.danger, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${report.reportId} Rejected',
+                    style: const TextStyle(
+                      color: AppColors.danger,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Deleting permanently in 5s...',
+                    style: TextStyle(
+                      color: AppColors.danger.withOpacity(0.8),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          TextButton(
+            onPressed: () {
+              context.read<ReportProvider>().undoInlineRejection(intId);
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
+              backgroundColor: AppColors.success,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('UNDO', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showRejectionSheet(
     BuildContext context,
     AdminReportData adminReport,
     _PendingReportData report,
   ) {
     final reasonController = TextEditingController();
-
     final isMobile = _Breakpoint.isMobile(context);
+
+    final onConfirm = (String reason) {
+      Navigator.pop(context);
+      final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
+      if (intId != null) {
+        context.read<ReportProvider>().rejectReportWithInlineUndo(intId);
+      }
+    };
 
     if (isMobile) {
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
-        builder:
-            (_) => RejectionBottomSheet(
-              report: adminReport,
-              reasonController: reasonController,
-              onConfirmReject: (reason) {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('${report.reportId} rejected.'),
-                    backgroundColor: AppColors.danger,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                );
-              },
-            ),
+        builder: (_) => RejectionBottomSheet(
+          report: adminReport,
+          reasonController: reasonController,
+          onConfirmReject: onConfirm,
+        ),
       );
     } else {
       showDialog(
         context: context,
-        builder:
-            (_) => _RejectionDialog(
-              report: adminReport,
-              reasonController: reasonController,
-              onConfirmReject: (reason) {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('${report.reportId} rejected.'),
-                    backgroundColor: AppColors.danger,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                );
-              },
-            ),
+        builder: (_) => _RejectionDialog(
+          report: adminReport,
+          reasonController: reasonController,
+          onConfirmReject: onConfirm,
+        ),
       );
     }
   }
 
   // ─── Rescue Team Status ───────────────────────────────────────────────────
   Widget _buildRescueTeamStatus(BuildContext context) {
-    final teams = [
-      _RescueTeamData(
-        initials: 'FR',
-        initialsColor: AppColors.danger,
-        name: 'Fire Response Team A',
-        locationStatus: 'Hattitar — Onscene',
-        badge: 'Active',
-        badgeColor: AppColors.success,
-        reportType: 'Fire',
-        title: 'Building Fire — Hattitar',
-        flag: 'Rescuer Reached',
-      ),
-      _RescueTeamData(
-        initials: 'AU',
-        initialsColor: AppColors.warning,
-        name: 'Ambulance Unit 2',
-        locationStatus: 'Biratnagar — En route',
-        badge: 'Dispatch',
-        badgeColor: AppColors.info,
-        reportType: 'Medical Emergency',
-        title: 'Injury Report — Biratnagar',
-        flag: 'En Route',
-      ),
-      _RescueTeamData(
-        initials: 'FR',
+    final reportProvider = context.watch<ReportProvider>();
+    final activeRescues = reportProvider.activeRescues;
+
+    final teams = activeRescues.map((rescue) {
+      return _RescueTeamData(
+        initials: rescue['initials'] ?? 'RT',
         initialsColor: AppColors.info,
-        name: 'Flood Response Team B',
-        locationStatus: 'Itahari — Onscene',
-        badge: 'Active',
-        badgeColor: AppColors.success,
-        reportType: 'Flood',
-        title: 'Flooding — Itahari Bus Park',
-        flag: 'Ongoing',
-      ),
-    ];
+        name: rescue['name'] ?? 'Unknown Team',
+        locationStatus: rescue['locationStatus'] ?? 'Unknown',
+        badge: rescue['badge'] ?? 'Dispatch',
+        badgeColor: rescue['badge'] == 'Active' ? AppColors.success : AppColors.info,
+        reportType: rescue['reportType'] ?? 'Unknown',
+        title: rescue['title'] ?? 'Unknown',
+        flag: rescue['flag'] ?? 'Ongoing',
+      );
+    }).toList();
 
     final isWide =
         _Breakpoint.isTablet(context) || _Breakpoint.isDesktop(context);
@@ -645,8 +695,13 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       children: [
         const _SectionLabel('RESCUE TEAM STATUS'),
         const SizedBox(height: 12),
-        isWide
-            ? _threeColumnGrid(
+        if (teams.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Text('No active rescue operations.', style: TextStyle(color: Colors.white54)),
+          )
+        else if (isWide)
+            _threeColumnGrid(
               teams
                   .map(
                     (team) => _AnimatedRescueCard(
@@ -656,7 +711,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                   )
                   .toList(),
             )
-            : Column(
+        else
+            Column(
               children:
                   teams
                       .map(
@@ -777,38 +833,44 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
 
   // ─── Duplicate Reports ────────────────────────────────────────────────────
   Widget _buildDuplicateReports(BuildContext context) {
-    final duplicates = [
-      _DuplicateReportData(
-        summary: '2 duplicates merged — #RPT-00419 & #RPT-00418',
-        detail: 'Cosine similarity 87%  ·  Flood  ·  Same GPS zone',
-        mergedReports: [
-          _MergedReportItem(
-            id: 'RPT-00419',
-            title: 'Flood — Itahari, Ward 3',
-            date: 'Mar 16, 2026',
-            reporter: 'Sita Rai',
-          ),
-          _MergedReportItem(
-            id: 'RPT-00418',
-            title: 'Flood — Itahari, Ward 3',
-            date: 'Mar 16, 2026',
-            reporter: 'Kiran Shrestha',
-          ),
-        ],
-      ),
-    ];
+    final reportProvider = context.watch<ReportProvider>();
+    final duplicateReports = reportProvider.duplicateReports;
+
+    final duplicates = duplicateReports.map((dup) {
+      final mergedReportsRaw = dup['mergedReports'] as List<dynamic>? ?? [];
+      final mergedReports = mergedReportsRaw.map((r) {
+        return _MergedReportItem(
+          id: r['id'] ?? 'Unknown',
+          title: r['title'] ?? 'Unknown',
+          date: r['date'] ?? 'Unknown',
+          reporter: r['reporter'] ?? 'Unknown',
+        );
+      }).toList();
+
+      return _DuplicateReportData(
+        summary: dup['summary'] ?? '',
+        detail: dup['detail'] ?? '',
+        mergedReports: mergedReports,
+      );
+    }).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const _SectionLabel('DUPLICATE REPORTS'),
         const SizedBox(height: 12),
-        ...duplicates.map(
-          (dup) => _AnimatedDuplicateCard(
-            data: dup,
-            onTap: () => _showMergedReportsDialog(context, dup),
+        if (duplicates.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Text('No duplicate reports found.', style: TextStyle(color: Colors.white54)),
+          )
+        else
+          ...duplicates.map(
+            (dup) => _AnimatedDuplicateCard(
+              data: dup,
+              onTap: () => _showMergedReportsDialog(context, dup),
+            ),
           ),
-        ),
       ],
     );
   }

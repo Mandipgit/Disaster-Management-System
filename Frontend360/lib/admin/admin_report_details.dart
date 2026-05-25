@@ -174,6 +174,17 @@ class _AdminReportDetailScreenState extends State<AdminReportDetailScreen>
     }
   }
 
+  void _rejectApiCall(String reason) {
+    final intId = int.tryParse(
+      widget.report.reportId.replaceAll(RegExp(r'[^0-9]'), ''),
+    );
+    
+    if (intId != null) {
+      context.read<ReportProvider>().rejectReportWithInlineUndo(intId);
+      Navigator.pop(context); // Navigate back to the dashboard immediately
+    }
+  }
+
   void _onVerify() {
     _verifyApiCall();
   }
@@ -197,26 +208,13 @@ class _AdminReportDetailScreenState extends State<AdminReportDetailScreen>
             reasonController: reasonController,
             onConfirmReject: (reason) {
               Navigator.pop(context);
-              _decisionController.reverse().then((_) {
-                setState(() => _decisionState = 'rejected');
-                _decisionController.forward();
-              });
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('${widget.report.reportId} rejected.'),
-                  backgroundColor: AppColors.danger,
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              );
+              _rejectApiCall(reason);
             },
           ),
     );
   }
 
-  void _onAssign() {
+  void _onAssign() async {
     if (_selectedTeams.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -230,16 +228,42 @@ class _AdminReportDetailScreenState extends State<AdminReportDetailScreen>
       );
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '${_selectedTeams.length} team(s) assigned to ${widget.report.reportId}',
-        ),
-        backgroundColor: AppColors.success,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
+
+    try {
+      final intId = int.tryParse(
+        widget.report.reportId.replaceAll(RegExp(r'[^0-9]'), ''),
+      );
+
+      if (intId != null) {
+        final api = ApiService();
+        await api.post('/admin/reports/$intId/assign', body: {
+          'team_names': _selectedTeams,
+        });
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${_selectedTeams.length} team(s) assigned to ${widget.report.reportId}',
+            ),
+            backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to assign teams: $e'),
+            backgroundColor: AppColors.danger,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   void _onUnverify() async {
@@ -313,20 +337,7 @@ class _AdminReportDetailScreenState extends State<AdminReportDetailScreen>
             reasonController: reasonController,
             onConfirmReject: (reason) {
               Navigator.pop(context);
-              _decisionController.reverse().then((_) {
-                setState(() => _decisionState = 'rejected');
-                _decisionController.forward();
-              });
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('${widget.report.reportId} rejected.'),
-                  backgroundColor: AppColors.danger,
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              );
+              _rejectApiCall(reason);
             },
           ),
     );
