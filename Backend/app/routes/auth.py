@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 import uuid
+import secrets
+from datetime import datetime, timedelta, timezone
+from pydantic import BaseModel, EmailStr
 
 from ..database import get_db
 from ..models.user import User
@@ -12,6 +15,7 @@ from ..auth.auth_utils import (
     create_access_token,
     verify_access_token,
 )
+from ..auth.email_service import send_verification_email
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -42,16 +46,34 @@ class RegisterRequest(BaseModel):
     citizenship_issue_district: str | None = None
     citizenship_issue_date: str | None = None
 
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
+
 
 # ======================
 # Register
 # ======================
 @router.post("/register")
-def register(payload: RegisterRequest, db: Session = Depends(get_db)):
+def register(request: Request, payload: RegisterRequest, db: Session = Depends(get_db)):
 
     existing_user = db.query(User).filter(User.email == payload.email).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
+
+    if payload.citizenship_number:
+        existing_citizenship = db.query(User).filter(User.citizenship_number == payload.citizenship_number).first()
+        if existing_citizenship:
+            raise HTTPException(status_code=400, detail="Citizenship number already registered")
+
+        if payload.citizenship_issue_date:
+            parts = payload.citizenship_number.split("-")
+            if len(parts) == 4:
+                third_section = parts[2]
+                issue_year = payload.citizenship_issue_date[:4]
+                if len(issue_year) == 4:
+                    last_two_digits = issue_year[-2:]
+                    if third_section != last_two_digits:
+                        raise HTTPException(status_code=400, detail="Citizenship number invalid")
 
     if payload.role.lower() not in ["citizen", "admin", "rescue"]:
         raise HTTPException(status_code=400, detail="Role must be 'citizen', 'admin', or 'rescue'")
@@ -66,7 +88,10 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
         citizenship_issue_district=payload.citizenship_issue_district,
         citizenship_issue_date=payload.citizenship_issue_date,  # Note: backend stores as Date but SQLAlchemy handles ISO 8601 string cast natively for Date columns in Postgres/SQLite
         is_admin=False,  
-        is_rescueteam=False
+        is_rescueteam=False,
+        is_verified=False,
+        verification_token=secrets.token_urlsafe(32),
+        verification_expires_at=datetime.now(timezone.utc) + timedelta(minutes=30)
     )
 
     db.add(new_user)
@@ -74,13 +99,68 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     db.refresh(new_user)
 
     if payload.role.lower() == "admin":
-        message = "Admin registered successfully. You cannot login until manually approved in the database."
+        message = "Admin registered successfully. Please check your email to verify your account. You cannot login until manually approved in the database."
     elif payload.role.lower() == "rescue":
-        message = "Rescue Team registered successfully. You cannot login until manually approved by Admin."
+        message = "Rescue Team registered successfully. Please check your email to verify your account. You cannot login until manually approved by Admin."
     else:
-        message = "Citizen registered successfully. You can now login."
+        message = "Citizen registered successfully. Please check your email to verify your account."
+
+    # Send verification email asynchronously (in a real app, use background tasks)
+    backend_url = str(request.base_url).rstrip("/")
+    send_verification_email(new_user.email, new_user.verification_token, backend_url=backend_url)
 
     return {"message": message}
+
+
+# ======================
+# Verify Email
+# ======================
+@router.get("/verify-email")
+def verify_email(token: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.verification_token == token).first()
+
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid verification token.")
+
+    # Convert to timezone aware if needed, SQLAlchemy might return naive depending on DB driver
+    expires_at = user.verification_expires_at
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if not expires_at or expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Verification token has expired.")
+
+    user.is_verified = True
+    user.verification_token = None
+    user.verification_expires_at = None
+    db.commit()
+
+    # For API response (You could also return an HTML response here if users click it from a browser)
+    return {"message": "Email verified successfully. You can now log in."}
+
+
+# ======================
+# Resend Verification
+# ======================
+@router.post("/resend-verification")
+def resend_verification(request: Request, payload: ResendVerificationRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == payload.email).first()
+
+    if not user:
+        # Don't reveal if email exists or not
+        return {"message": "If the email is registered and unverified, a verification link has been sent."}
+
+    if user.is_verified:
+        return {"message": "Email is already verified."}
+
+    user.verification_token = secrets.token_urlsafe(32)
+    user.verification_expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
+    db.commit()
+
+    backend_url = str(request.base_url).rstrip("/")
+    send_verification_email(user.email, user.verification_token, backend_url=backend_url)
+
+    return {"message": "If the email is registered and unverified, a verification link has been sent."}
 
 
 # ======================
@@ -94,8 +174,11 @@ def login(
     # OAuth2PasswordRequestForm sends email in the "username" field in Swagger
     user = db.query(User).filter(User.email == form_data.username).first()
 
-    if not user or not verify_password(form_data.password, user.password_hash): # type: ignore # type: ignore
+    if not user or not verify_password(form_data.password, user.password_hash): # type: ignore
         raise HTTPException(status_code=400, detail="Invalid credentials")
+
+    if not user.is_verified:
+        raise HTTPException(status_code=403, detail="Please verify your email first")
 
     # ✅ Citizen → always allowed
     # ✅ Admin not approved → strictly blocked

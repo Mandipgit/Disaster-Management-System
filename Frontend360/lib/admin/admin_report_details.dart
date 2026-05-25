@@ -344,6 +344,24 @@ class _AdminReportDetailScreenState extends State<AdminReportDetailScreen>
     );
   }
 
+  String _relativeDate(String dateStr) {
+    if (dateStr.isEmpty) return 'Just now';
+    try {
+      if (!dateStr.endsWith('Z') && !dateStr.contains('+')) {
+        dateStr += 'Z';
+      }
+      final dt = DateTime.parse(dateStr).toLocal();
+      final diff = DateTime.now().difference(dt);
+      if (diff.inMinutes < 1) return 'Just now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+      if (diff.inHours < 24) return '${diff.inHours} hours ago';
+      if (diff.inDays < 7) return '${diff.inDays} days ago';
+      return '${dt.day}/${dt.month}/${dt.year}';
+    } catch (e) {
+      return dateStr.split("T").first;
+    }
+  }
+
   // ─── Build ───────────────────────────────────────────────────────────────
 
   @override
@@ -563,7 +581,7 @@ class _AdminReportDetailScreenState extends State<AdminReportDetailScreen>
             children: [
               _MetaItem(
                 icon: Icons.access_time_rounded,
-                label: widget.report.date,
+                label: _relativeDate(widget.report.date),
               ),
               _MetaItem(
                 icon: Icons.location_on_outlined,

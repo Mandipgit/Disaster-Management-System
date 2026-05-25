@@ -5,6 +5,7 @@ import 'dart:async';
 class ReportModel {
   final int id;
   final String userId;
+  final String userName;
   final String disasterType;
   final String title;
   final String description;
@@ -23,6 +24,7 @@ class ReportModel {
   ReportModel({
     required this.id,
     required this.userId,
+    this.userName = 'Unknown',
     required this.disasterType,
     required this.title,
     required this.description,
@@ -44,6 +46,7 @@ class ReportModel {
     return ReportModel(
       id: json['id'] ?? 0,
       userId: json['user_id']?.toString() ?? '',
+      userName: (json['submissions'] != null && json['submissions'].isNotEmpty) ? json['submissions'][0]['user_name'] ?? 'Unknown' : 'Unknown',
       disasterType: json['disaster_type'] ?? 'Unknown',
       title: json['title'] ?? 'No Title',
       description: json['description'] ?? '',

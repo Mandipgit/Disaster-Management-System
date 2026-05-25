@@ -95,10 +95,7 @@ class AuthProvider extends ChangeNotifier {
         if (citizenshipIssueDate != null) 'citizenship_issue_date': citizenshipIssueDate,
       });
       
-      // Auto-login only if citizen
-      if (role.toLowerCase() == 'citizen') {
-        await login(email, password);
-      }
+      // Remove auto-login. User must verify email first.
       return response['message'] ?? 'Registered successfully';
     } catch (e) {
       rethrow;
@@ -107,5 +104,16 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> logout() async {
     await _sessionService.clearSession();
+  }
+
+  Future<String> resendVerification(String email) async {
+    try {
+      final response = await _apiService.post('/auth/resend-verification', body: {
+        'email': email,
+      });
+      return response['message'] ?? 'Verification email sent';
+    } catch (e) {
+      rethrow;
+    }
   }
 }

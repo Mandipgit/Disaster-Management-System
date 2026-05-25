@@ -72,7 +72,7 @@ class _AdminReportsScreenState extends State<AdminReportsScreen>
         location: m.title,
         lat: '${m.latitude.toStringAsFixed(4)}°N',
         lng: '${m.longitude.toStringAsFixed(4)}°E',
-        reporter: m.userId.length > 8 ? m.userId.substring(0, 8) : m.userId,
+        reporter: m.userName,
         trustScore: 80,
         upvotes: m.likes,
         downvotes: m.dislikes,
@@ -588,6 +588,34 @@ class _AdminReportCardState extends State<_AdminReportCard> {
     _pageRoute(AdminReportDetailScreen(report: widget.report)),
   );
 
+  String _relativeDate(String dateStr) {
+    try {
+      if (!dateStr.endsWith('Z') && !dateStr.contains('+')) {
+        dateStr += 'Z';
+      }
+      final dt = DateTime.parse(dateStr).toLocal();
+      final now = DateTime.now();
+      final diff = now.difference(dt);
+
+      if (diff.inHours < 1) {
+        if (diff.inMinutes < 1) return 'Just now';
+        return '${diff.inMinutes} min ago';
+      } else if (diff.inHours < 24) {
+        return '${diff.inHours} hours ago';
+      } else if (diff.inDays < 30) {
+        return '${diff.inDays} days ago';
+      } else if (diff.inDays < 365) {
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        return '${monthNames[dt.month - 1]} ${dt.day}';
+      } else {
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        return '${monthNames[dt.month - 1]} ${dt.day}, ${dt.year}';
+      }
+    } catch (_) {
+      return dateStr;
+    }
+  }
+
   PageRoute _pageRoute(Widget page) => PageRouteBuilder(
     pageBuilder: (_, a, __) => page,
     transitionsBuilder:
@@ -753,7 +781,7 @@ class _AdminReportCardState extends State<_AdminReportCard> {
                 const Spacer(),
                 Flexible(
                   child: Text(
-                    '10 min ago',
+                    _relativeDate(report.date),
                     style: const TextStyle(color: Colors.white38, fontSize: 11),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,

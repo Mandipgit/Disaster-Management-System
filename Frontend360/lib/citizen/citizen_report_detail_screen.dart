@@ -268,7 +268,7 @@ class CitizenReportDetailScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                report.submissions.isNotEmpty ? report.submissions.first.userName ?? 'Citizen Reporter' : 'Citizen Reporter',
+                report.submissions.isNotEmpty ? report.submissions.first['user_name'] ?? 'Citizen Reporter' : 'Citizen Reporter',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 15,
@@ -445,6 +445,9 @@ class CitizenReportDetailScreen extends StatelessWidget {
   String _relativeDate(String dateStr) {
     if (dateStr.isEmpty) return 'Just now';
     try {
+      if (!dateStr.endsWith('Z') && !dateStr.contains('+')) {
+        dateStr += 'Z';
+      }
       final dt = DateTime.parse(dateStr).toLocal();
       final diff = DateTime.now().difference(dt);
       if (diff.inMinutes < 1) return 'Just now';
