@@ -1,8 +1,8 @@
-# pyrefly: ignore [missing-import]
+
 from fastapi import APIRouter, Depends, HTTPException
-# pyrefly: ignore [missing-import]
+
 from sqlalchemy.orm import Session, joinedload
-# pyrefly: ignore [missing-import]
+
 from pydantic import BaseModel
 from typing import List, Optional
 import math
@@ -14,13 +14,13 @@ from ..models.user import User
 from .auth import get_current_user, get_optional_current_user
 from ..models.report_embedding import ReportEmbedding
 from ..models.report_reaction import ReportReaction, ReactionType
-# pyrefly: ignore [missing-import]
+
 from google.genai import Client
-# pyrefly: ignore [missing-import]
+
 from google.genai import types
-# pyrefly: ignore [missing-import]
+
 from fastapi import APIRouter
-# pyrefly: ignore [missing-import]
+
 from dotenv import load_dotenv
 import os
 
@@ -96,7 +96,8 @@ def serialize_incident(inc, current_user_id=None):
             "timestamp": ts,
             "title": inc.title,
             "status": r.status,
-            "verified": getattr(r, 'verified', False)
+            "verified": getattr(r, 'verified', False),
+            "media_urls": [m.file_path for m in inc.media if str(m.user_id) == str(r.user_id) and m.file_type == "image"] if hasattr(inc, "media") and inc.media else []
         })
 
     likes = sum(1 for r in getattr(inc, 'reactions', []) if r.reaction_type.value == "LIKE")

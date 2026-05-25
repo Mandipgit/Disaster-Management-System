@@ -1,7 +1,7 @@
-# pyrefly: ignore [missing-import]
+
 from sqlalchemy.dialects.postgresql import UUID
 
-# pyrefly: ignore [missing-import]
+
 from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
 from ..database import Base
 

@@ -5,10 +5,11 @@ import 'package:disaster360/providers/report_provider.dart';
 import 'package:disaster360/providers/auth_provider.dart';
 import 'package:disaster360/citizen/citizen_profile_screen.dart';
 import 'package:disaster360/citizen/citizen_my_reports.dart';
-import 'package:disaster360/citizen/citizen_risk_map_screen.dart';
+import 'package:disaster360/services/map_screen.dart';
 import 'package:disaster360/colors.dart';
 import 'package:disaster360/services/fab_add_report.dart';
 import 'package:disaster360/services/notification_alert.dart';
+import 'package:disaster360/citizen/citizen_report_detail_screen.dart';
 
 class AlertData {
   final String title;
@@ -180,7 +181,7 @@ class _CitizenHomeScreenState extends State<CitizenHomeScreen> {
         children: [
           _buildHomeTab(),
           const CitizenMyReportsScreen(),
-          const CitizenRiskMapScreen(),
+          const DisasterMapScreen(),
           const CitizenProfileScreen(),
         ],
       ),
@@ -1086,33 +1087,45 @@ class _ReportCardWidgetState extends State<_ReportCard>
           cursor: SystemMouseCursors.click,
           onEnter: (_) => setState(() => _hovering = true),
           onExit: (_) => setState(() => _hovering = false),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            margin: const EdgeInsets.only(bottom: 14),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.bgSurface,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color:
-                    _hovering
-                        ? AppColors.orange.withOpacity(0.35)
-                        : AppColors.border,
-                width: 1,
-              ),
-              boxShadow:
-                  _hovering
-                      ? [
-                        BoxShadow(
-                          color: AppColors.orange.withOpacity(0.06),
-                          blurRadius: 14,
-                          spreadRadius: 2,
-                        ),
-                      ]
-                      : [],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => CitizenReportDetailScreen(report: widget.report),
+                  ),
+                );
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: const EdgeInsets.only(bottom: 14),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.bgSurface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color:
+                        _hovering
+                            ? AppColors.orange.withOpacity(0.35)
+                            : AppColors.border,
+                    width: 1,
+                  ),
+                  boxShadow:
+                      _hovering
+                          ? [
+                            BoxShadow(
+                              color: AppColors.orange.withOpacity(0.06),
+                              blurRadius: 14,
+                              spreadRadius: 2,
+                            ),
+                          ]
+                          : [],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // ── Top row: Status + Date ──────────────────────────
                 Row(
@@ -1295,8 +1308,10 @@ class _ReportCardWidgetState extends State<_ReportCard>
           ),
         ),
       ),
-    );
-  }
+    ),
+  ),
+);
+}
 
   Widget _buildNestedReportCard(dynamic sub, ReportModel mainReport) {
     return GestureDetector(
@@ -1433,28 +1448,39 @@ class _ReportCardWidgetState extends State<_ReportCard>
                 ),
                 const SizedBox(height: 16),
                 
-                // Nested Image 
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    height: 160,
-                    width: double.infinity,
-                    color: AppColors.bgDark,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        const Icon(Icons.image_outlined, color: Colors.white24, size: 40),
-                        Positioned(
-                          bottom: 8,
-                          child: Text(
-                            'Evidence Photo',
-                            style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 12),
+                // Nested Image
+                if (sub['media_urls'] != null && (sub['media_urls'] as List).isNotEmpty)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.network(
+                      (sub['media_urls'] as List).first.toString(),
+                      height: 160,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
+                  )
+                else
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      height: 160,
+                      width: double.infinity,
+                      color: AppColors.bgDark,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          const Icon(Icons.image_outlined, color: Colors.white24, size: 40),
+                          Positioned(
+                            bottom: 8,
+                            child: Text(
+                              'No Evidence Photo',
+                              style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 12),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
                 const SizedBox(height: 16),
 
                 Text(

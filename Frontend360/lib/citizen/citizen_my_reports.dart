@@ -21,7 +21,7 @@ class _CitizenMyReportsScreenState extends State<CitizenMyReportsScreen> {
   List<ReportModel> _getFilteredReports(BuildContext context) {
     final userId = context.read<AuthProvider>().user?.id;
     final allReports = context.watch<ReportProvider>().reports;
-    final myReports = allReports.where((r) => r.userId == userId).toList();
+    final myReports = allReports.where((r) => r.userId == userId || r.submissions.any((s) => s['user_id'] == userId)).toList();
 
     return myReports.where((r) {
       final matchesFilter =
@@ -280,18 +280,51 @@ class _ReportCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.bgSurface,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+    final currentUserId = context.read<AuthProvider>().user?.id;
+    dynamic mySubmission;
+    try {
+      mySubmission = data.submissions.firstWhere((s) => s['user_id'] == currentUserId);
+    } catch (e) {
+      mySubmission = null;
+    }
+
+    List<String> displayMediaUrls = data.mediaUrls;
+    if (mySubmission != null && mySubmission['media_urls'] != null) {
+      displayMediaUrls = (mySubmission['media_urls'] as List).map((e) => e.toString()).toList();
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => CitizenReportDetailScreen(report: data),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.bgSurface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.05), width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -332,21 +365,21 @@ class _ReportCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ],
-            if (data.mediaUrls.isNotEmpty) ...[
+            if (displayMediaUrls.isNotEmpty) ...[
               const SizedBox(height: 12),
               SizedBox(
                 height: 80,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
-                  itemCount: data.mediaUrls.length,
+                  itemCount: displayMediaUrls.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 8),
                   itemBuilder: (context, index) {
                     return GestureDetector(
-                      onTap: () => _showFullScreenImage(context, data.mediaUrls[index]),
+                      onTap: () => _showFullScreenImage(context, displayMediaUrls[index]),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: Image.network(
-                          data.mediaUrls[index],
+                          displayMediaUrls[index],
                           width: 80,
                           height: 80,
                           fit: BoxFit.cover,
@@ -423,8 +456,10 @@ class _ReportCard extends StatelessWidget {
             ],
           ],
         ),
-      );
-  }
+      ),
+    ),
+  );
+}
 
   void _showDeleteConfirm(BuildContext context) {
     showDialog(
