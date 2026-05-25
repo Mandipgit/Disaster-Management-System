@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from typing import List, Optional
 import math
+from datetime import datetime
 from ..database import get_db
 from ..models.incident import Incident
 from ..models.report import Report
@@ -56,6 +57,7 @@ class ReportCreateRequest(BaseModel):
     latitude: float
     longitude: float
     severity: str
+    created_at: Optional[str] = None
 
 class ReportUpdateRequest(BaseModel):
     disaster_type: Optional[str] = None
@@ -138,6 +140,13 @@ def create_report(
     RADIUS_KM = DISASTER_RADIUS_KM.get(payload.disaster_type.lower(), DISASTER_RADIUS_KM["default"])
     embedding = get_embedding(f"{payload.title}. {payload.description}")
 
+    parsed_timestamp = datetime.utcnow()
+    if payload.created_at:
+        try:
+            parsed_timestamp = datetime.fromisoformat(payload.created_at.replace('Z', '+00:00')).replace(tzinfo=None)
+        except ValueError:
+            pass
+
     same_type_incidents = db.query(Incident).filter(Incident.disaster_type.ilike(payload.disaster_type)).all()
     nearby_incident_ids = []
     nearby_distances = {}
@@ -173,7 +182,7 @@ def create_report(
         db.commit()
         db.refresh(matched_incident)
         
-        new_report = Report(incident_id=matched_incident.id, user_id=current_user.id, description=payload.description)
+        new_report = Report(incident_id=matched_incident.id, user_id=current_user.id, description=payload.description, timestamp=parsed_timestamp)
         db.add(new_report)
         db.commit()
 
@@ -193,13 +202,13 @@ def create_report(
         new_incident = Incident(
             disaster_type=payload.disaster_type, title=payload.title, description=payload.description,
             location=payload.location, latitude=payload.latitude, longitude=payload.longitude,
-            severity=payload.severity, sources=1
+            severity=payload.severity, sources=1, created_at=parsed_timestamp
         )
         db.add(new_incident)
         db.commit()
         db.refresh(new_incident)
 
-        new_report = Report(incident_id=new_incident.id, user_id=current_user.id, description=payload.description)
+        new_report = Report(incident_id=new_incident.id, user_id=current_user.id, description=payload.description, timestamp=parsed_timestamp)
         db.add(new_report)
         db.commit()
 

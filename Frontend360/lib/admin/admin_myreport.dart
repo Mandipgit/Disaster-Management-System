@@ -3,6 +3,7 @@ import 'package:disaster360/colors.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:disaster360/providers/report_provider.dart';
+import 'package:disaster360/citizen/citizen_home_screen.dart';
 
 // ─── Max content width — centers everything on ultra-wide screens ─────────────
 const double _kMaxContentWidth = 1320.0;
@@ -75,7 +76,7 @@ class _AdminReportsScreenState extends State<AdminReportsScreen>
         trustScore: 80,
         upvotes: m.likes,
         downvotes: m.dislikes,
-        photoCount: 0,
+        mediaUrls: m.mediaUrls,
       );
     }).toList();
 
@@ -792,9 +793,50 @@ class _AdminReportCardState extends State<_AdminReportCard> {
             ),
             const SizedBox(height: 10),
 
-            // Image placeholders
-            if (report.photoCount > 0) ...[
-              _ImagePlaceholderRow(photoCount: report.photoCount),
+            // Image thumbnails
+            if (report.mediaUrls.isNotEmpty) ...[
+              SizedBox(
+                height: 60,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: report.mediaUrls.length.clamp(0, 4),
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    return GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          PageRouteBuilder(
+                            opaque: false,
+                            barrierColor: Colors.transparent,
+                            transitionDuration: const Duration(milliseconds: 250),
+                            pageBuilder: (_, __, ___) => ImageViewerOverlay(
+                              mediaUrls: report.mediaUrls,
+                              initialIndex: index,
+                              reportId: report.reportId,
+                            ),
+                          ),
+                        );
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: Image.network(
+                          report.mediaUrls[index],
+                          width: 60,
+                          height: 60,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            width: 60,
+                            height: 60,
+                            color: Colors.white12,
+                            child: const Icon(Icons.broken_image, color: Colors.white38, size: 20),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
               const SizedBox(height: 10),
             ],
 

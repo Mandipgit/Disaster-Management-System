@@ -270,6 +270,7 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen>
           "latitude": _currentPosition!.latitude,
           "longitude": _currentPosition!.longitude,
           "severity": severityStr,
+          "created_at": DateTime.now().toUtc().toIso8601String(),
         },
       );
 

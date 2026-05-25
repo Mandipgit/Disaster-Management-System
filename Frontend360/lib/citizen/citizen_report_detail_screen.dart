@@ -2,10 +2,12 @@ import 'package:disaster360/colors.dart';
 import 'package:flutter/material.dart';
 import 'citizen_home_screen.dart';
 
-class CitizenReportDetailScreen extends StatelessWidget {
-  final AlertData alert;
+import 'package:disaster360/providers/report_provider.dart';
 
-  const CitizenReportDetailScreen({super.key, required this.alert});
+class CitizenReportDetailScreen extends StatelessWidget {
+  final ReportModel report;
+
+  const CitizenReportDetailScreen({super.key, required this.report});
 
   @override
   Widget build(BuildContext context) {
@@ -16,7 +18,7 @@ class CitizenReportDetailScreen extends StatelessWidget {
       'In Progress',
       'Controlled',
     ];
-    final currentIndex = _currentStepIndex(alert.currentStatus, steps);
+    final currentIndex = _currentStepIndex(report.status, steps);
 
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
@@ -52,7 +54,7 @@ class CitizenReportDetailScreen extends StatelessWidget {
         child: const Icon(Icons.chevron_left, color: Colors.white, size: 28),
       ),
       title: Text(
-        'Report #${alert.reportId}',
+        'Report #${report.id}',
         style: const TextStyle(
           color: Colors.white,
           fontSize: 17,
@@ -87,7 +89,7 @@ class CitizenReportDetailScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  alert.type,
+                  report.disasterType,
                   style: const TextStyle(
                     color: Colors.white60,
                     fontSize: 12,
@@ -95,12 +97,12 @@ class CitizenReportDetailScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              _StatusBadge(status: alert.currentStatus),
+              _StatusBadge(status: report.status),
             ],
           ),
           const SizedBox(height: 14),
           Text(
-            alert.title,
+            report.title,
             style: const TextStyle(
               color: Colors.white,
               fontSize: 20,
@@ -110,7 +112,7 @@ class CitizenReportDetailScreen extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            alert.description,
+            report.description,
             style: const TextStyle(
               color: Colors.white60,
               fontSize: 13,
@@ -123,7 +125,7 @@ class CitizenReportDetailScreen extends StatelessWidget {
               const Icon(Icons.access_time, color: Colors.white38, size: 14),
               const SizedBox(width: 5),
               Text(
-                alert.date,
+                _relativeDate(report.createdAt),
                 style: const TextStyle(color: Colors.white38, fontSize: 12),
               ),
               const SizedBox(width: 16),
@@ -133,9 +135,13 @@ class CitizenReportDetailScreen extends StatelessWidget {
                 size: 14,
               ),
               const SizedBox(width: 5),
-              Text(
-                alert.location,
-                style: const TextStyle(color: Colors.white38, fontSize: 12),
+              Expanded(
+                child: Text(
+                  '${report.latitude.toStringAsFixed(4)}, ${report.longitude.toStringAsFixed(4)}',
+                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ),
@@ -159,7 +165,7 @@ class CitizenReportDetailScreen extends StatelessWidget {
               const Icon(Icons.location_on, color: AppColors.orange, size: 18),
               const SizedBox(width: 8),
               Text(
-                '${alert.lat}, ${alert.lng}',
+                '${report.latitude}, ${report.longitude}',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 15,
@@ -185,17 +191,51 @@ class CitizenReportDetailScreen extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              const Icon(Icons.image_outlined, color: Colors.white38, size: 18),
-              const SizedBox(width: 8),
-              Text(
-                '${alert.photos} photo(s) attached',
-                style: const TextStyle(color: Colors.white54, fontSize: 13),
+          if (report.mediaUrls.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text(
+              'Attached Media',
+              style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 120,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: report.mediaUrls.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (context, index) {
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.network(
+                      report.mediaUrls[index],
+                      width: 120,
+                      height: 120,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        width: 120,
+                        height: 120,
+                        color: Colors.white12,
+                        child: const Icon(Icons.broken_image, color: Colors.white38),
+                      ),
+                    ),
+                  );
+                },
               ),
-            ],
-          ),
+            ),
+          ] else ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Icon(Icons.image_outlined, color: Colors.white38, size: 18),
+                const SizedBox(width: 8),
+                const Text(
+                  'No photos attached',
+                  style: TextStyle(color: Colors.white54, fontSize: 13),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -228,7 +268,7 @@ class CitizenReportDetailScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                alert.reporter,
+                report.submissions.isNotEmpty ? report.submissions.first.userName ?? 'Citizen Reporter' : 'Citizen Reporter',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 15,
@@ -262,7 +302,7 @@ class CitizenReportDetailScreen extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 Text(
-                  '+${alert.upvotes}  Upvotes',
+                  '${report.likes}  Upvotes',
                   style: const TextStyle(
                     color: AppColors.successGreen,
                     fontSize: 14,
@@ -291,7 +331,7 @@ class CitizenReportDetailScreen extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 Text(
-                  '-${alert.downvotes}  Downvotes',
+                  '${report.dislikes}  Downvotes',
                   style: const TextStyle(
                     color: AppColors.danger,
                     fontSize: 14,
@@ -400,6 +440,21 @@ class CitizenReportDetailScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _relativeDate(String dateStr) {
+    if (dateStr.isEmpty) return 'Just now';
+    try {
+      final dt = DateTime.parse(dateStr).toLocal();
+      final diff = DateTime.now().difference(dt);
+      if (diff.inMinutes < 1) return 'Just now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+      if (diff.inHours < 24) return '${diff.inHours}h ago';
+      if (diff.inDays < 7) return '${diff.inDays}d ago';
+      return '${dt.day}/${dt.month}/${dt.year}';
+    } catch (e) {
+      return dateStr.split("T").first;
+    }
   }
 
   int _currentStepIndex(String status, List<String> steps) {

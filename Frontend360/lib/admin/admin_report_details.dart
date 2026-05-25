@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:disaster360/services/api_service.dart';
 import 'package:provider/provider.dart';
 import 'package:disaster360/providers/report_provider.dart';
+import 'package:disaster360/citizen/citizen_home_screen.dart';
 
 // ─── Data Model ───────────────────────────────────────────────────────────────
 
@@ -20,7 +21,7 @@ class AdminReportData {
   final int trustScore;
   final int upvotes;
   final int downvotes;
-  final int photoCount; // 2–5
+  final List<String> mediaUrls;
 
   const AdminReportData({
     required this.reportId,
@@ -36,7 +37,7 @@ class AdminReportData {
     required this.trustScore,
     required this.upvotes,
     required this.downvotes,
-    required this.photoCount,
+    required this.mediaUrls,
   });
 }
 
@@ -628,7 +629,7 @@ class _AdminReportDetailScreenState extends State<AdminReportDetailScreen>
               const Icon(Icons.image_outlined, color: Colors.white38, size: 15),
               const SizedBox(width: 6),
               Text(
-                '${widget.report.photoCount} photo(s) attached',
+                '${widget.report.mediaUrls.length} photo(s) attached',
                 style: const TextStyle(color: Colors.white38, fontSize: 13),
               ),
             ],
@@ -646,25 +647,50 @@ class _AdminReportDetailScreenState extends State<AdminReportDetailScreen>
   // We use intrinsic sizing so it never overflows regardless of screen width.
 
   Widget _buildPhotoGrid() {
-    final count = widget.report.photoCount.clamp(2, 5);
+    if (widget.report.mediaUrls.isEmpty) return const SizedBox.shrink();
+
+    final count = widget.report.mediaUrls.length.clamp(1, 5);
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Each photo gets equal width. Gap = 8 px between them.
         final totalGap = 8.0 * (count - 1);
         final photoWidth = (constraints.maxWidth - totalGap) / count;
-        // Height = width * (9/7) to maintain double-passport aspect ratio
         final photoHeight = photoWidth * (9 / 7);
 
         return Row(
           children: List.generate(count, (index) {
             return Row(
               children: [
-                _PhotoThumb(
-                  index: index + 1,
-                  width: photoWidth,
-                  height: photoHeight,
-                  totalCount: count,
-                  reportId: widget.report.reportId,
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      PageRouteBuilder(
+                        opaque: false,
+                        barrierColor: Colors.transparent,
+                        transitionDuration: const Duration(milliseconds: 250),
+                        pageBuilder: (_, __, ___) => ImageViewerOverlay(
+                          mediaUrls: widget.report.mediaUrls,
+                          initialIndex: index,
+                          reportId: widget.report.reportId,
+                        ),
+                      ),
+                    );
+                  },
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      widget.report.mediaUrls[index],
+                      width: photoWidth,
+                      height: photoHeight,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        width: photoWidth,
+                        height: photoHeight,
+                        color: Colors.white12,
+                        child: const Icon(Icons.broken_image, color: Colors.white38),
+                      ),
+                    ),
+                  ),
                 ),
                 if (index < count - 1) const SizedBox(width: 8),
               ],

@@ -208,7 +208,8 @@ class _EmergencyReportScreenState extends State<EmergencyReportScreen> {
         'severity': severityStr,
         'latitude': _currentPosition!.latitude,
         'longitude': _currentPosition!.longitude,
-        'status': 'Pending'
+        'status': 'Pending',
+        'created_at': DateTime.now().toUtc().toIso8601String()
       };
 
       final api = ApiService();

@@ -147,6 +147,17 @@ class ReportProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> updateReport(int reportId, Map<String, dynamic> data) async {
+    try {
+      final response = await _apiService.put('/reports/$reportId', body: data);
+      // Re-fetch to get updated data
+      await fetchReports();
+    } catch (e) {
+      debugPrint('Error updating report: $e');
+      rethrow;
+    }
+  }
+
   final Map<int, Timer> _rejectionTimers = {};
   Set<int> get pendingRejections => _rejectionTimers.keys.toSet();
 
