@@ -70,7 +70,12 @@ class _CitizenMyReportsScreenState extends State<CitizenMyReportsScreen> {
                         return _ReportCard(
                           data: report,
                           onTap: () {
-                            // Optionally navigate to details
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => CitizenReportDetailScreen(report: report),
+                              ),
+                            );
                           },
                         );
                       },
@@ -283,7 +288,7 @@ class _ReportCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${data.createdAt.split("T").first} · #${data.id}',
+                        _relativeDate(data.createdAt),
                         style: const TextStyle(
                           color: Colors.white38,
                           fontSize: 12,
@@ -296,16 +301,47 @@ class _ReportCard extends StatelessWidget {
                 _StatusBadge(status: data.status),
               ],
             ),
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: const LinearProgressIndicator(
-                value: 0.5,
-                backgroundColor: Colors.white12,
-                valueColor: AlwaysStoppedAnimation<Color>(AppColors.orange),
-                minHeight: 5,
+            if (data.description.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                data.description,
+                style: const TextStyle(
+                  color: Colors.white54,
+                  fontSize: 13,
+                  height: 1.4,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
-            ),
+            ],
+            if (data.mediaUrls.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 80,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: data.mediaUrls.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    return ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        data.mediaUrls[index],
+                        width: 80,
+                        height: 80,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          width: 80,
+                          height: 80,
+                          color: Colors.white12,
+                          child: const Icon(Icons.broken_image, color: Colors.white38),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             Row(
               children: [
@@ -331,11 +367,140 @@ class _ReportCard extends StatelessWidget {
                 ),
               ],
             ),
+            if (data.status != 'Verified' && !data.verified) ...[
+              const SizedBox(height: 16),
+              const Divider(color: Colors.white12, height: 1),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => _showUpdateDialog(context),
+                    icon: const Icon(Icons.edit, size: 16),
+                    label: const Text('Update'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white70,
+                      side: const BorderSide(color: Colors.white24),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton.icon(
+                    onPressed: () => _showDeleteConfirm(context),
+                    icon: const Icon(Icons.delete_outline, size: 16),
+                    label: const Text('Delete'),
+                    style: ElevatedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      backgroundColor: AppColors.danger.withOpacity(0.8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
     );
   }
+
+  void _showDeleteConfirm(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.bgSurface,
+        title: const Text('Delete Report', style: TextStyle(color: Colors.white)),
+        content: const Text('Are you sure you want to delete this report? This action cannot be undone.', style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              context.read<ReportProvider>().deleteReport(data.id);
+            },
+            child: const Text('Delete', style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showUpdateDialog(BuildContext context) {
+    final titleCtrl = TextEditingController(text: data.title);
+    final descCtrl = TextEditingController(text: data.description);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.bgSurface,
+        title: const Text('Update Report', style: TextStyle(color: Colors.white)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: titleCtrl,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Title',
+                  labelStyle: TextStyle(color: Colors.white54),
+                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: descCtrl,
+                style: const TextStyle(color: Colors.white),
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Description',
+                  labelStyle: TextStyle(color: Colors.white54),
+                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              context.read<ReportProvider>().updateReport(data.id, {
+                'title': titleCtrl.text.trim(),
+                'description': descCtrl.text.trim(),
+              });
+            },
+            child: const Text('Save', style: TextStyle(color: AppColors.orange)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _relativeDate(String dateStr) {
+    if (dateStr.isEmpty) return 'Just now';
+    try {
+      final dt = DateTime.parse(dateStr).toLocal();
+      final diff = DateTime.now().difference(dt);
+      if (diff.inMinutes < 1) return 'Just now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+      if (diff.inHours < 24) return '${diff.inHours}h ago';
+      if (diff.inDays < 7) return '${diff.inDays}d ago';
+      return '${dt.day}/${dt.month}/${dt.year}';
+    } catch (e) {
+      return dateStr.split("T").first;
+    }
+  }
+
 }
 
 class _TagChip extends StatelessWidget {

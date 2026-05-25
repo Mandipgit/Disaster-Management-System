@@ -795,22 +795,22 @@ class _AnimatedNavItemState extends State<_AnimatedNavItem>
 //  FULL-SCREEN IMAGE VIEWER OVERLAY (FIXED: full width & height)
 // ══════════════════════════════════════════════════════════════════════════════
 
-class _ImageViewerOverlay extends StatefulWidget {
+class ImageViewerOverlay extends StatefulWidget {
   final List<String> mediaUrls;
   final int initialIndex;
   final String reportId;
 
-  const _ImageViewerOverlay({
+  const ImageViewerOverlay({
     required this.mediaUrls,
     required this.initialIndex,
     required this.reportId,
   });
 
   @override
-  State<_ImageViewerOverlay> createState() => _ImageViewerOverlayState();
+  State<ImageViewerOverlay> createState() => _ImageViewerOverlayState();
 }
 
-class _ImageViewerOverlayState extends State<_ImageViewerOverlay>
+class _ImageViewerOverlayState extends State<ImageViewerOverlay>
     with SingleTickerProviderStateMixin {
   late PageController _pageCtrl;
   late AnimationController _fadeCtrl;
@@ -1066,7 +1066,7 @@ class _ReportCardWidgetState extends State<_ReportCard>
       barrierColor: Colors.transparent,
       transitionDuration: const Duration(milliseconds: 250),
       pageBuilder:
-          (_, __, ___) => _ImageViewerOverlay(
+          (_, __, ___) => ImageViewerOverlay(
             mediaUrls: widget.report.mediaUrls,
             initialIndex: index,
             reportId: widget.report.id.toString(),

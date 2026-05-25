@@ -413,7 +413,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       trustScore: p.trustScore,
       upvotes: p.upvotes,
       downvotes: p.downvotes,
-      photoCount: p.photoCount,
+      mediaUrls: p.mediaUrls,
     );
   }
 
@@ -441,7 +441,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                 reporter:
                     m.userId.length > 8 ? m.userId.substring(0, 8) : m.userId,
                 trustScore: 80,
-                photoCount: 0,
+                mediaUrls: m.mediaUrls,
               ),
             )
             .toList();
@@ -2671,7 +2671,7 @@ class _PendingReportData {
   final String lng;
   final String reporter;
   final int trustScore;
-  final int photoCount;
+  final List<String> mediaUrls;
 
   const _PendingReportData({
     required this.reportId,
@@ -2687,7 +2687,7 @@ class _PendingReportData {
     required this.lng,
     required this.reporter,
     required this.trustScore,
-    required this.photoCount,
+    required this.mediaUrls,
   });
 }
 
