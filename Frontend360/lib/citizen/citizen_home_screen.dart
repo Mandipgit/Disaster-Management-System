@@ -6,6 +6,7 @@ import 'package:disaster360/providers/auth_provider.dart';
 import 'package:disaster360/citizen/citizen_profile_screen.dart';
 import 'package:disaster360/citizen/citizen_my_reports.dart';
 import 'package:disaster360/citizen/citizen_risk_map_screen.dart';
+import 'package:disaster360/citizen/citizen_report_detail_screen.dart';
 import 'package:disaster360/colors.dart';
 import 'package:disaster360/services/fab_add_report.dart';
 import 'package:disaster360/services/notification_alert.dart';
@@ -1082,11 +1083,20 @@ class _ReportCardWidgetState extends State<_ReportCard>
       opacity: _entryFade,
       child: SlideTransition(
         position: _entrySlide,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          onEnter: (_) => setState(() => _hovering = true),
-          onExit: (_) => setState(() => _hovering = false),
-          child: AnimatedContainer(
+        child: GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CitizenReportDetailScreen(report: report),
+              ),
+            );
+          },
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            onEnter: (_) => setState(() => _hovering = true),
+            onExit: (_) => setState(() => _hovering = false),
+            child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             margin: const EdgeInsets.only(bottom: 14),
             padding: const EdgeInsets.all(16),
@@ -1293,6 +1303,7 @@ class _ReportCardWidgetState extends State<_ReportCard>
               ],
             ),
           ),
+        ),
         ),
       ),
     );
