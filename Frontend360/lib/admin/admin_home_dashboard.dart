@@ -458,6 +458,13 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             ? _twoColumnGrid(
               reports.map((report) {
                 final adminReport = _toAdminReportData(report);
+                final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
+                final isPendingRejection = intId != null && reportProvider.pendingRejections.contains(intId);
+
+                if (isPendingRejection) {
+                  return _buildInlineUndoCard(context, report, intId);
+                }
+
                 return _AnimatedPendingCard(
                   report: report,
                   onTap:
@@ -503,6 +510,16 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               children:
                   reports.map((report) {
                     final adminReport = _toAdminReportData(report);
+                    final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
+                    final isPendingRejection = intId != null && reportProvider.pendingRejections.contains(intId);
+
+                    if (isPendingRejection) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _buildInlineUndoCard(context, report, intId),
+                      );
+                    }
+
                     return _AnimatedPendingCard(
                       report: report,
                       onTap:
@@ -549,60 +566,104 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     );
   }
 
+  Widget _buildInlineUndoCard(BuildContext context, _PendingReportData report, int intId) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppColors.danger.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.danger.withOpacity(0.3), width: 1),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.danger.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.delete_outline, color: AppColors.danger, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${report.reportId} Rejected',
+                    style: const TextStyle(
+                      color: AppColors.danger,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Deleting permanently in 5s...',
+                    style: TextStyle(
+                      color: AppColors.danger.withOpacity(0.8),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          TextButton(
+            onPressed: () {
+              context.read<ReportProvider>().undoInlineRejection(intId);
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
+              backgroundColor: AppColors.success,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('UNDO', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showRejectionSheet(
     BuildContext context,
     AdminReportData adminReport,
     _PendingReportData report,
   ) {
     final reasonController = TextEditingController();
-
     final isMobile = _Breakpoint.isMobile(context);
+
+    final onConfirm = (String reason) {
+      Navigator.pop(context);
+      final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
+      if (intId != null) {
+        context.read<ReportProvider>().rejectReportWithInlineUndo(intId);
+      }
+    };
 
     if (isMobile) {
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
-        builder:
-            (_) => RejectionBottomSheet(
-              report: adminReport,
-              reasonController: reasonController,
-              onConfirmReject: (reason) {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('${report.reportId} rejected.'),
-                    backgroundColor: AppColors.danger,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                );
-              },
-            ),
+        builder: (_) => RejectionBottomSheet(
+          report: adminReport,
+          reasonController: reasonController,
+          onConfirmReject: onConfirm,
+        ),
       );
     } else {
       showDialog(
         context: context,
-        builder:
-            (_) => _RejectionDialog(
-              report: adminReport,
-              reasonController: reasonController,
-              onConfirmReject: (reason) {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('${report.reportId} rejected.'),
-                    backgroundColor: AppColors.danger,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                );
-              },
-            ),
+        builder: (_) => _RejectionDialog(
+          report: adminReport,
+          reasonController: reasonController,
+          onConfirmReject: onConfirm,
+        ),
       );
     }
   }

@@ -174,6 +174,17 @@ class _AdminReportDetailScreenState extends State<AdminReportDetailScreen>
     }
   }
 
+  void _rejectApiCall(String reason) {
+    final intId = int.tryParse(
+      widget.report.reportId.replaceAll(RegExp(r'[^0-9]'), ''),
+    );
+    
+    if (intId != null) {
+      context.read<ReportProvider>().rejectReportWithInlineUndo(intId);
+      Navigator.pop(context); // Navigate back to the dashboard immediately
+    }
+  }
+
   void _onVerify() {
     _verifyApiCall();
   }
@@ -197,20 +208,7 @@ class _AdminReportDetailScreenState extends State<AdminReportDetailScreen>
             reasonController: reasonController,
             onConfirmReject: (reason) {
               Navigator.pop(context);
-              _decisionController.reverse().then((_) {
-                setState(() => _decisionState = 'rejected');
-                _decisionController.forward();
-              });
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('${widget.report.reportId} rejected.'),
-                  backgroundColor: AppColors.danger,
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              );
+              _rejectApiCall(reason);
             },
           ),
     );
@@ -339,20 +337,7 @@ class _AdminReportDetailScreenState extends State<AdminReportDetailScreen>
             reasonController: reasonController,
             onConfirmReject: (reason) {
               Navigator.pop(context);
-              _decisionController.reverse().then((_) {
-                setState(() => _decisionState = 'rejected');
-                _decisionController.forward();
-              });
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('${widget.report.reportId} rejected.'),
-                  backgroundColor: AppColors.danger,
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              );
+              _rejectApiCall(reason);
             },
           ),
     );
