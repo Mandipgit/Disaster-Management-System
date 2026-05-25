@@ -1,9 +1,12 @@
 
+# pyrefly: ignore [missing-import]
 from sqlalchemy import Column, String, Boolean, Date, DateTime
 
+# pyrefly: ignore [missing-import]
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 
+# pyrefly: ignore [missing-import]
 from sqlalchemy.sql import func
 from ..database import Base
 

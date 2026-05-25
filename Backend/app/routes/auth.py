@@ -1,15 +1,20 @@
 
+# pyrefly: ignore [missing-import]
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+# pyrefly: ignore [missing-import]
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session
 
+# pyrefly: ignore [missing-import]
 from pydantic import BaseModel, EmailStr
 import uuid
 import secrets
 from datetime import datetime, timedelta, timezone
 
+# pyrefly: ignore [missing-import]
 from pydantic import BaseModel, EmailStr
 
 from ..database import get_db
@@ -286,6 +291,7 @@ def get_current_user(
     return user
 
 
+# pyrefly: ignore [missing-import]
 from fastapi import Request
 
 def get_optional_current_user(
