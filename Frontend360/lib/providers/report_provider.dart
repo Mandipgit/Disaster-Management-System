@@ -18,6 +18,7 @@ class ReportModel {
   String? userReaction;
   final String createdAt;
   final List<dynamic> submissions;
+  final List<String> mediaUrls;
 
   ReportModel({
     required this.id,
@@ -35,6 +36,7 @@ class ReportModel {
     this.userReaction,
     required this.createdAt,
     this.submissions = const [],
+    this.mediaUrls = const [],
   });
 
   factory ReportModel.fromJson(Map<String, dynamic> json) {
@@ -55,6 +57,7 @@ class ReportModel {
       userReaction: json['user_reaction'],
       createdAt: json['created_at'] ?? '',
       submissions: json['submissions'] ?? [],
+      mediaUrls: (json['media_urls'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
     );
   }
 }
@@ -198,6 +201,7 @@ class ReportProvider extends ChangeNotifier {
           dislikes: _reports[index].dislikes,
           createdAt: _reports[index].createdAt,
           submissions: _reports[index].submissions,
+          mediaUrls: _reports[index].mediaUrls,
         );
         notifyListeners();
       }
@@ -228,6 +232,7 @@ class ReportProvider extends ChangeNotifier {
           dislikes: _reports[index].dislikes,
           createdAt: _reports[index].createdAt,
           submissions: _reports[index].submissions,
+          mediaUrls: _reports[index].mediaUrls,
         );
         notifyListeners();
       }

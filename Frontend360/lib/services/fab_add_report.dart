@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:disaster360/providers/report_provider.dart';
 import 'package:disaster360/services/api_service.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+import 'package:disaster360/services/supabase_storage_service.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -234,15 +237,30 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen>
     _hourglassController.repeat();
 
     try {
+      // Ensure minimum photos
+      if (_uploadedPhotos.length < 2) {
+        _snack('Please provide at least 2 photos of the incident.');
+        setState(() {
+          _isSubmitting = false;
+          _isDuplicateCheckRunning = false;
+        });
+        _hourglassController.stop();
+        return;
+      }
+
       final api = ApiService();
+      final storageService = SupabaseStorageService();
+
+      // Step 1: Upload images to Supabase
+      List<File> filesToUpload = _uploadedPhotos.map((path) => File(path)).toList();
+      List<String> uploadedUrls = await storageService.uploadImages(filesToUpload);
+
       String severityStr = "Low";
-      if (_severityLevel == 1) severityStr = "Medium";
-      // Assuming severity values as mapped before mapping structure isn't exactly parsed
-      // Wait we don't have severityLevel == 1 strictly matching "Medium", let's check
       if (_severityLevel == 1) severityStr = "Medium";
       if (_severityLevel == 2) severityStr = "High";
       if (_severityLevel == 3) severityStr = "Critical";
 
+      // Step 2: Create Report
       final response = await api.post(
         '/reports/',
         body: {
@@ -260,6 +278,17 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen>
       final int sourcesCount =
           response.containsKey('sources') ? response['sources'] : 1;
       final reportId = response['report_id'];
+
+      // Step 3: Attach Media URLs to the report
+      await api.post(
+        '/reports/$reportId/media',
+        body: {
+          "media_urls": uploadedUrls,
+          "file_type": "image"
+        }
+      );
+
+
 
       // Keep it checking UI state but secretly update _isDuplicate so the step dots color correctly
       if (mounted) {
@@ -286,15 +315,6 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen>
 
       // Wait 1.5 seconds for users to process result before closing
       await Future.delayed(const Duration(milliseconds: 1500));
-
-      // Upload photos if any
-      for (String path in _uploadedPhotos) {
-        try {
-          await api.multipartPost('/media/upload/$reportId', path);
-        } catch (e) {
-          debugPrint("Media upload failed for $path: $e");
-        }
-      }
 
       if (mounted) {
         context.read<ReportProvider>().fetchReports(); // Refresh Feed
@@ -335,8 +355,31 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen>
     );
   }
 
-  void _simulatePhotoUpload() {
-    _snack('Camera/Gallery upload must be linked to backend. Currently disabled.');
+  final ImagePicker _picker = ImagePicker();
+
+  Future<void> _pickPhoto() async {
+    if (_uploadedPhotos.length >= 5) {
+      _snack('Maximum 5 photos allowed.');
+      return;
+    }
+
+    try {
+      final List<XFile> images = await _picker.pickMultiImage(
+        imageQuality: 80,
+      );
+
+      if (images.isNotEmpty) {
+        setState(() {
+          for (var image in images) {
+            if (_uploadedPhotos.length < 5) {
+              _uploadedPhotos.add(image.path);
+            }
+          }
+        });
+      }
+    } catch (e) {
+      _snack('Failed to pick images: $e');
+    }
   }
 
   void _removePhoto(int index) {
@@ -866,12 +909,9 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen>
                       color: AppColors.bgSurface,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: AppColors.border),
-                    ),
-                    child: const Center(
-                      child: Icon(
-                        Icons.image_outlined,
-                        color: Colors.white38,
-                        size: 32,
+                      image: DecorationImage(
+                        image: FileImage(File(_uploadedPhotos[i])),
+                        fit: BoxFit.cover,
                       ),
                     ),
                   ),
@@ -926,7 +966,7 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen>
         // Upload button
         if (_uploadedPhotos.length < 5)
           GestureDetector(
-            onTap: _simulatePhotoUpload,
+            onTap: _pickPhoto,
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 20),

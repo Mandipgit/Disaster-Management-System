@@ -1,10 +1,10 @@
 # pyrefly: ignore [missing-import]
-from fastapi import APIRouter, UploadFile, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 # pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session
-import shutil
-import uuid
-import os
+# pyrefly: ignore [missing-import]
+from pydantic import BaseModel
+from typing import List
 
 from ..database import get_db
 from ..models.report import Report
@@ -12,65 +12,74 @@ from ..models.report_media import ReportMedia
 from ..models.user import User
 from .auth import get_current_user  
 
-router = APIRouter(prefix="/media", tags=["Media"])
+# Changed prefix to mount under /reports
+router = APIRouter(prefix="/reports", tags=["Media"])
 
+class MediaUrlRequest(BaseModel):
+    media_urls: List[str]
+    file_type: str = "image"
 
 # ======================
-# Upload Media (citizen or approved admin)
+# Attach Media URLs to Report (citizen or approved admin)
 # ======================
-@router.post("/upload/{report_id}")
-def upload_media(
+@router.post("/{report_id}/media")
+def attach_media(
     report_id: int,
-    file: UploadFile,
+    payload: MediaUrlRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Check report exists
-    report = db.query(Report).filter(Report.id == report_id).first()
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
+    # Validate payload
+    if not payload.media_urls:
+        raise HTTPException(status_code=400, detail="No media URLs provided")
+    if len(payload.media_urls) > 5:
+        raise HTTPException(status_code=400, detail="Maximum 5 images allowed")
+    
+    # Optional: Basic validation to ensure URLs belong to Supabase (adapt to your actual domain)
+    for url in payload.media_urls:
+        if "supabase.co" not in url:
+            raise HTTPException(status_code=400, detail=f"Invalid media URL: {url}. Only Supabase URLs are allowed.")
 
-    # Only report owner or approved admin can upload media
-    if report.user_id != current_user.id and current_user.role != "admin": # type: ignore
+    from ..models.incident import Incident
+
+    # Check incident exists
+    incident = db.query(Incident).filter(Incident.id == report_id).first()
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    # We allow any user who has submitted a report to this incident, or any admin, to attach media
+    # Let's just check if the user has a report in this incident
+    user_has_reported = any(r.user_id == current_user.id for r in incident.reports)
+    if not user_has_reported and current_user.role != "admin":
         raise HTTPException(
             status_code=403,
-            detail="Not authorized to upload media for this report"
+            detail="Not authorized to add media for this incident"
         )
 
-    # Check duplicate
-    existing_media = db.query(ReportMedia).filter(
-        ReportMedia.report_id == report_id,
-        ReportMedia.file_path == f"uploads/reports/{file.filename}"
-    ).first()
+    # Insert into DB
+    saved_media = []
+    for url in payload.media_urls:
+        # Check duplicate
+        existing_media = db.query(ReportMedia).filter(
+            ReportMedia.incident_id == report_id,
+            ReportMedia.file_path == url
+        ).first()
 
-    if existing_media:
-        raise HTTPException(
-            status_code=400,
-            detail="This media is already uploaded for this report"
+        if existing_media:
+            continue # Skip duplicates
+        
+        media = ReportMedia(
+            incident_id=report_id,
+            user_id=current_user.id,
+            file_path=url,
+            file_type=payload.file_type
         )
+        db.add(media)
+        saved_media.append(url)
 
-    # Create uploads directory if it does not exist
-    os.makedirs("uploads/reports", exist_ok=True)
-
-    # Save file with unique name
-    filename = f"{uuid.uuid4()}_{file.filename}"
-    file_location = f"uploads/reports/{filename}"
-    with open(file_location, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    # Save to DB
-    media = ReportMedia(
-        report_id=report_id,
-        user_id=current_user.id,
-        file_path=file_location,
-        file_type=file.content_type
-    )
-    db.add(media)
     db.commit()
-    db.refresh(media)
 
     return {
-        "message": "Media uploaded successfully",
-        "media_id": media.id,
-        "file_path": file_location
+        "message": f"Successfully attached {len(saved_media)} media URLs",
+        "saved_urls": saved_media
     }

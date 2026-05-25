@@ -1,6 +1,8 @@
+# pyrefly: ignore [missing-import]
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
+# pyrefly: ignore [missing-import]
 from fastapi import HTTPException, status
 
 
@@ -9,7 +11,7 @@ from fastapi import HTTPException, status
 # ==============================
 SECRET_KEY = "Xz7!LmP9qR2vT6yU8iOp@aSdF1gH3jKl#ZxC4vBnM0qWeRtYuIoPaSdFgHjKlZxCv"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -56,8 +58,9 @@ def verify_access_token(token: str):
 
         return payload
 
-    except JWTError:
+    except JWTError as e:
+        print("JWTError:", str(e))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
+            detail=f"Invalid or expired token: {str(e)}",
         )

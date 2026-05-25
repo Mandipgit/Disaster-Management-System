@@ -796,12 +796,12 @@ class _AnimatedNavItemState extends State<_AnimatedNavItem>
 // ══════════════════════════════════════════════════════════════════════════════
 
 class _ImageViewerOverlay extends StatefulWidget {
-  final int photoCount;
+  final List<String> mediaUrls;
   final int initialIndex;
   final String reportId;
 
   const _ImageViewerOverlay({
-    required this.photoCount,
+    required this.mediaUrls,
     required this.initialIndex,
     required this.reportId,
   });
@@ -862,40 +862,35 @@ class _ImageViewerOverlayState extends State<_ImageViewerOverlay>
           // Full-screen swipeable images – now edge‑to‑edge
           PageView.builder(
             controller: _pageCtrl,
-            itemCount: widget.photoCount,
+            itemCount: widget.mediaUrls.length,
             onPageChanged: (i) => setState(() => _currentIndex = i),
             itemBuilder: (_, i) {
               return Container(
                 color: AppColors.bgDark,
                 child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.image_outlined,
-                        color: Colors.white.withOpacity(0.2),
-                        size: 72,
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        'Photo ${i + 1}',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.45),
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          decoration: TextDecoration.none,
+                  child: Image.network(
+                    widget.mediaUrls[i],
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) => Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.broken_image_outlined,
+                          color: Colors.white.withOpacity(0.2),
+                          size: 72,
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '#${widget.reportId}',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.25),
-                          fontSize: 12,
-                          decoration: TextDecoration.none,
+                        const SizedBox(height: 14),
+                        Text(
+                          'Error loading image',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.45),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.none,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -944,7 +939,7 @@ class _ImageViewerOverlayState extends State<_ImageViewerOverlay>
                       border: Border.all(color: Colors.white12),
                     ),
                     child: Text(
-                      'Photo ${_currentIndex + 1} of ${widget.photoCount}',
+                      'Photo ${_currentIndex + 1} of ${widget.mediaUrls.length}',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 12,
@@ -977,14 +972,14 @@ class _ImageViewerOverlayState extends State<_ImageViewerOverlay>
           ),
 
           // Dot indicators at bottom
-          if (widget.photoCount > 1)
+          if (widget.mediaUrls.length > 1)
             Positioned(
               bottom: MediaQuery.of(context).padding.bottom + 24,
               left: 0,
               right: 0,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(widget.photoCount, (i) {
+                children: List.generate(widget.mediaUrls.length, (i) {
                   final active = i == _currentIndex;
                   return AnimatedContainer(
                     duration: const Duration(milliseconds: 250),
@@ -1063,7 +1058,7 @@ class _ReportCardWidgetState extends State<_ReportCard>
   }
 
   void _openImageViewer(int index) {
-    final count = 1.clamp(2, 5);
+    if (widget.report.mediaUrls.isEmpty) return;
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -1072,7 +1067,7 @@ class _ReportCardWidgetState extends State<_ReportCard>
       transitionDuration: const Duration(milliseconds: 250),
       pageBuilder:
           (_, __, ___) => _ImageViewerOverlay(
-            photoCount: count,
+            mediaUrls: widget.report.mediaUrls,
             initialIndex: index,
             reportId: widget.report.id.toString(),
           ),
@@ -1082,7 +1077,6 @@ class _ReportCardWidgetState extends State<_ReportCard>
   @override
   Widget build(BuildContext context) {
     final report = widget.report;
-    final photoCount = 1;
 
     return FadeTransition(
       opacity: _entryFade,
@@ -1224,7 +1218,7 @@ class _ReportCardWidgetState extends State<_ReportCard>
                 if (report.submissions.isNotEmpty) const SizedBox(height: 14),
 
                 // ── TWO‑IMAGE GRID (restored) ────────────────────────────
-                _buildImageGrid(report.submissions.length > 0 ? report.submissions.length : 2),
+                _buildImageGrid(report.mediaUrls),
                 const SizedBox(height: 14),
 
                 // ── Vote Buttons ─────────────────────────────────────────
@@ -1512,8 +1506,9 @@ class _ReportCardWidgetState extends State<_ReportCard>
   }
 
   // ── TWO‑IMAGE GRID (original style: two thumbnails, second shows +N if more) ──
-  Widget _buildImageGrid(int totalPhotos) {
-    final actualCount = totalPhotos.clamp(1, 5);
+  Widget _buildImageGrid(List<String> mediaUrls) {
+    if (mediaUrls.isEmpty) return const SizedBox.shrink();
+    final actualCount = mediaUrls.length.clamp(1, 5);
     final visibleCards = actualCount == 1 ? 1 : 2;
     final extraCount = actualCount - visibleCards;
 
@@ -1537,31 +1532,19 @@ class _ReportCardWidgetState extends State<_ReportCard>
                   fit: StackFit.expand,
                   alignment: Alignment.center,
                   children: [
-                    // Placeholder image content
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.image_outlined,
-                          color:
-                              isLast
-                                  ? Colors.white10
-                                  : Colors.white.withOpacity(0.2),
-                          size: 32,
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Photo ${i + 1}',
-                          style: TextStyle(
-                            color:
-                                isLast
-                                    ? Colors.white10
-                                    : Colors.white.withOpacity(0.22),
-                            fontSize: 11,
-                            decoration: TextDecoration.none,
+                    Image.network(
+                      mediaUrls[i],
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.broken_image_outlined,
+                            color: Colors.white.withOpacity(0.2),
+                            size: 32,
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                     // +N overlay on last visible card
                     if (isLast)
