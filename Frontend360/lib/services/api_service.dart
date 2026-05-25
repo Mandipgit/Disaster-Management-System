@@ -9,7 +9,7 @@ import 'package:disaster360/services/session_service.dart';
 class ApiService {
   // Configured to the PC's actual local IPv4 address so physical Android devices on Wi-Fi can connect
   static String get baseUrl {
-    return dotenv.env['API_BASE_URL'] ?? 'http://127.0.0.1:8000';
+    return dotenv.env['API_BASE_URL'] ?? 'http://192.168.1.80:8000';
   }
 
   Future<Map<String, String>> _getHeaders({Map<String, String>? customHeaders}) async {

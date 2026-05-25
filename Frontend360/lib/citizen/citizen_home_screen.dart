@@ -1589,6 +1589,9 @@ class _ReportCardWidgetState extends State<_ReportCard>
 
   String _relativeDate(String dateStr) {
     try {
+      if (!dateStr.endsWith('Z') && !dateStr.contains('+')) {
+        dateStr += 'Z';
+      }
       final dt = DateTime.parse(dateStr).toLocal();
       final now = DateTime.now();
       final diff = now.difference(dt);

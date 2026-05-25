@@ -260,8 +260,15 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     final maxW = _Breakpoint.contentMaxWidth(context);
 
     return SafeArea(
-      child: SingleChildScrollView(
-        padding: EdgeInsets.symmetric(horizontal: hPad, vertical: 20),
+      child: RefreshIndicator(
+        color: AppColors.orange,
+        backgroundColor: AppColors.bgSurface,
+        onRefresh: () async {
+          await context.read<ReportProvider>().fetchReports();
+        },
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.symmetric(horizontal: hPad, vertical: 20),
         child: Center(
           child: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: maxW),
@@ -283,8 +290,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
           ),
         ),
       ),
+      ),
     );
   }
+
 
   // ─── Header ───────────────────────────────────────────────────────────────
   Widget _buildHeader(BuildContext context) {
@@ -314,34 +323,46 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             ),
           ],
         ),
-        _HoverAnimatedWidget(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppColors.bgDark,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.border, width: 1),
+        Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.refresh, color: Colors.white70),
+              onPressed: () {
+                context.read<ReportProvider>().fetchReports();
+              },
+              tooltip: 'Refresh Dashboard',
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: const [
-                Icon(
-                  Icons.pending_actions_outlined,
-                  color: AppColors.warning,
-                  size: 15,
+            const SizedBox(width: 8),
+            _HoverAnimatedWidget(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.bgDark,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.border, width: 1),
                 ),
-                SizedBox(width: 6),
-                Text(
-                  '2 Pending',
-                  style: TextStyle(
-                    color: AppColors.warning,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.pending_actions_outlined,
+                      color: AppColors.warning,
+                      size: 15,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${context.watch<ReportProvider>().reports.where((r) => r.status.toLowerCase() == 'pending').length} Pending',
+                      style: const TextStyle(
+                        color: AppColors.warning,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ],
     );
@@ -398,6 +419,35 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   }
 
   // ─── Pending Verification ─────────────────────────────────────────────────
+
+  String _relativeDate(String dateStr) {
+    try {
+      if (!dateStr.endsWith('Z') && !dateStr.contains('+')) {
+        dateStr += 'Z';
+      }
+      final dt = DateTime.parse(dateStr).toLocal();
+      final now = DateTime.now();
+      final diff = now.difference(dt);
+
+      if (diff.inHours < 1) {
+        if (diff.inMinutes < 1) return 'Just now';
+        return '${diff.inMinutes} min ago';
+      } else if (diff.inHours < 24) {
+        return '${diff.inHours} hours ago';
+      } else if (diff.inDays < 30) {
+        return '${diff.inDays} days ago';
+      } else if (diff.inDays < 365) {
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        return '${monthNames[dt.month - 1]} ${dt.day}';
+      } else {
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        return '${monthNames[dt.month - 1]} ${dt.day}, ${dt.year}';
+      }
+    } catch (_) {
+      return dateStr;
+    }
+  }
+
   AdminReportData _toAdminReportData(_PendingReportData p) {
     return AdminReportData(
       reportId: p.reportId,
@@ -429,7 +479,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               (m) => _PendingReportData(
                 reportId: 'RPT-${m.id}',
                 status: m.status,
-                submittedAgo: 'Just now',
+                submittedAgo: _relativeDate(m.createdAt),
                 type: m.disasterType,
                 location: m.title,
                 description: m.description,
@@ -438,8 +488,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                 date: m.createdAt,
                 lat: m.latitude.toStringAsFixed(4) + '°N',
                 lng: m.longitude.toStringAsFixed(4) + '°E',
-                reporter:
-                    m.userId.length > 8 ? m.userId.substring(0, 8) : m.userId,
+                reporter: m.userName,
                 trustScore: 80,
                 mediaUrls: m.mediaUrls,
               ),

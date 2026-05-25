@@ -5,6 +5,8 @@ import 'package:disaster360/auth/auth_wrapper.dart';
 import 'package:disaster360/colors.dart';
 import 'package:disaster360/main.dart';
 import 'package:disaster360/services/feedback.dart';
+import 'package:disaster360/services/api_service.dart';
+import 'package:disaster360/providers/report_provider.dart';
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -45,14 +47,14 @@ class _AdminProfileScreenState extends State<AdminProfileScreen>
   bool _systemOnline = true;
   late TabController _tabController;
 
-  final int _alertsManaged = 0;
-  final int _reportsReviewed = 0;
-  final int _teamsDeployed = 0;
-  final int _zonesMonitored = 0;
+  int _alertsManaged = 0;
+  int _reportsReviewed = 0;
+  int _teamsDeployed = 0;
+  int _zonesMonitored = 0;
 
-  final List<_AppUser> _admins = [];
-  final List<_AppUser> _citizens = [];
-  final List<_AppUser> _rescueTeams = [];
+  List<_AppUser> _admins = [];
+  List<_AppUser> _citizens = [];
+  List<_AppUser> _rescueTeams = [];
 
   final Map<int, int> _visibleCount = {0: 3, 1: 3, 2: 3};
 
@@ -61,6 +63,57 @@ class _AdminProfileScreenState extends State<AdminProfileScreen>
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(() => setState(() {}));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchAdminData();
+    });
+  }
+
+  Future<void> _fetchAdminData() async {
+    try {
+      final userRes = await ApiService().get('/admin/users');
+      if (userRes is List) {
+        final List<_AppUser> parsedAdmins = [];
+        final List<_AppUser> parsedCitizens = [];
+        final List<_AppUser> parsedRescue = [];
+
+        for (var u in userRes) {
+          final role = (u['role'] ?? 'citizen').toString().toLowerCase();
+          final appUser = _AppUser(
+            id: u['id'].toString().length >= 8 ? u['id'].toString().substring(0, 8) : u['id'].toString(),
+            name: u['full_name'] ?? 'Unknown',
+            role: role.toUpperCase(),
+            phone: u['phone']?.toString() ?? 'N/A',
+            loginTime: 'Just now',
+            citizenId: u['id'].toString().length >= 5 ? u['id'].toString().substring(0, 5) : u['id'].toString(),
+            isOnline: true,
+            district: 'N/A',
+          );
+          if (role == 'admin') {
+            parsedAdmins.add(appUser);
+          } else if (role == 'rescue') {
+            parsedRescue.add(appUser);
+          } else {
+            parsedCitizens.add(appUser);
+          }
+        }
+        setState(() {
+          _admins = parsedAdmins;
+          _citizens = parsedCitizens;
+          _rescueTeams = parsedRescue;
+        });
+      }
+
+      final reportProv = context.read<ReportProvider>();
+      final reports = reportProv.reports;
+      setState(() {
+        _alertsManaged = reports.where((r) => r.status == 'Verified' || r.status == 'Resolved').length;
+        _reportsReviewed = reports.where((r) => r.status != 'Pending').length;
+        _teamsDeployed = reportProv.activeRescues.length;
+        _zonesMonitored = reports.map((r) => r.title).toSet().length;
+      });
+    } catch (e) {
+      debugPrint("Error fetching admin profile data: $e");
+    }
   }
 
   @override
@@ -1875,10 +1928,11 @@ class _HoverUserTileState extends State<_HoverUserTile> {
 
   @override
   Widget build(BuildContext context) {
+    final roleUpper = widget.user.role.toUpperCase();
     final rc =
-        widget.user.role == 'Admin'
+        roleUpper == 'ADMIN'
             ? AppColors.orange
-            : widget.user.role == 'Rescue Team'
+            : roleUpper == 'RESCUE'
             ? AppColors.success
             : AppColors.info;
 
@@ -1906,12 +1960,9 @@ class _HoverUserTileState extends State<_HoverUserTile> {
                 ),
                 child: Center(
                   child: Text(
-                    widget.user.name
-                        .split(' ')
-                        .take(2)
-                        .map((w) => w[0])
-                        .join()
-                        .toUpperCase(),
+                    widget.user.name.trim().isEmpty 
+                        ? 'U' 
+                        : widget.user.name.trim().split(' ').take(2).map((w) => w.isNotEmpty ? w[0] : '').join().toUpperCase(),
                     style: TextStyle(
                       color: rc,
                       fontSize: 14,

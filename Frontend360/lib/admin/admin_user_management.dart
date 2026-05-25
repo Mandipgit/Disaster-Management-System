@@ -51,7 +51,7 @@ class _AdminUserManagementScreenState extends State<AdminUserManagementScreen> {
     try {
       final key = role == 'admin' ? 'is_admin' : 'is_rescueteam';
       await _apiService.put(
-        '/admin/users/\/status',
+        '/admin/users/$userId/status',
         body: {key: !currentStatus},
       );
       // Refresh the list after update

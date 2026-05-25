@@ -445,6 +445,9 @@ class CitizenReportDetailScreen extends StatelessWidget {
   String _relativeDate(String dateStr) {
     if (dateStr.isEmpty) return 'Just now';
     try {
+      if (!dateStr.endsWith('Z') && !dateStr.contains('+')) {
+        dateStr += 'Z';
+      }
       final dt = DateTime.parse(dateStr).toLocal();
       final diff = DateTime.now().difference(dt);
       if (diff.inMinutes < 1) return 'Just now';
