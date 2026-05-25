@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "152725701729",
+    "project_id": "disaster360-29afe",
+    "storage_bucket": "disaster360-29afe.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:152725701729:android:40d7da0b280d358474d620",
+        "android_client_info": {
+          "package_name": "com.example.disaster360"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBzXcTLB5S9PZb5Wbuk0GfhErfZ5l87DAw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
