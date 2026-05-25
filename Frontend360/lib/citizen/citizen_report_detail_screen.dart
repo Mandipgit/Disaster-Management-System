@@ -268,7 +268,7 @@ class CitizenReportDetailScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                report.submissions.isNotEmpty ? report.submissions.first.userName ?? 'Citizen Reporter' : 'Citizen Reporter',
+                report.submissions.isNotEmpty ? report.submissions.first['user_name'] ?? 'Citizen Reporter' : 'Citizen Reporter',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 15,
