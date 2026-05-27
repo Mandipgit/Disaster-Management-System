@@ -99,6 +99,25 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen>
 
   void _startLocationStream() {
     _positionStreamSubscription?.cancel();
+
+    // Fetch initial immediately
+    Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high)
+        .then((pos) {
+          if (mounted) {
+            setState(() {
+              _currentPosition = pos;
+            });
+          }
+        })
+        .catchError((e) => debugPrint("Error fetching location: $e"));
+
+    // On Desktop platforms, getPositionStream has a known issue where it calls 
+    // the platform channel on a background thread, causing a crash.
+    // Since we already fetched the current location above, we can just return.
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      return;
+    }
+
     const LocationSettings locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
       distanceFilter: 5,
@@ -113,17 +132,6 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen>
         });
       }
     });
-
-    // Fetch initial immediately
-    Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high)
-        .then((pos) {
-          if (mounted) {
-            setState(() {
-              _currentPosition = pos;
-            });
-          }
-        })
-        .catchError((e) => debugPrint("Error fetching location: $e"));
   }
 
   void _showLocationServiceDialog() {
@@ -365,9 +373,7 @@ class _ReportDisasterScreenState extends State<ReportDisasterScreen>
     }
 
     try {
-      final List<XFile> images = await _picker.pickMultiImage(
-        imageQuality: 80,
-      );
+      final List<XFile> images = await _picker.pickMultiImage();
 
       if (images.isNotEmpty) {
         setState(() {

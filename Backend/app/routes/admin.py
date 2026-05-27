@@ -431,12 +431,20 @@ def get_analytics(
     now = datetime.utcnow()
     if time_range == "24H":
         cutoff = now - timedelta(hours=24)
+        trend_curr_start = now - timedelta(hours=1)
+        trend_prev_start = now - timedelta(hours=2)
     elif time_range == "30D":
         cutoff = now - timedelta(days=30)
-    elif time_range == "90D":
-        cutoff = now - timedelta(days=90)
+        trend_curr_start = now - timedelta(days=7)
+        trend_prev_start = now - timedelta(days=14)
+    elif time_range == "1Y":
+        cutoff = now - timedelta(days=365)
+        trend_curr_start = now - timedelta(days=30)
+        trend_prev_start = now - timedelta(days=60)
     else:  # default 7D
         cutoff = now - timedelta(days=7)
+        trend_curr_start = now - timedelta(days=1)
+        trend_prev_start = now - timedelta(days=2)
 
     # 1. KPIs
     reports = db.query(Report).filter(Report.timestamp >= cutoff).all()
@@ -447,23 +455,67 @@ def get_analytics(
         "pending": sum(1 for r in reports if r.status == "Pending")
     }
 
+    # 1b. KPI Trends (Velocity)
+    trend_curr_reports = db.query(Report).filter(Report.timestamp >= trend_curr_start).all()
+    curr_kpis = {
+        "total": len(trend_curr_reports),
+        "verified": sum(1 for r in trend_curr_reports if r.verified),
+        "rejected": sum(1 for r in trend_curr_reports if r.status == "Rejected"),
+        "pending": sum(1 for r in trend_curr_reports if r.status == "Pending")
+    }
+
+    trend_prev_reports = db.query(Report).filter(Report.timestamp >= trend_prev_start, Report.timestamp < trend_curr_start).all()
+    prev_kpis = {
+        "total": len(trend_prev_reports),
+        "verified": sum(1 for r in trend_prev_reports if r.verified),
+        "rejected": sum(1 for r in trend_prev_reports if r.status == "Rejected"),
+        "pending": sum(1 for r in trend_prev_reports if r.status == "Pending")
+    }
+
+    def calc_trend(curr, prev):
+        if prev == 0:
+            if curr == 0:
+                return {"value": "0%", "up": True}
+            return {"value": f"+{curr}", "up": True}
+        diff = curr - prev
+        pct = (diff / prev) * 100
+        sign = "+" if diff > 0 else ""
+        return {"value": f"{sign}{int(pct)}%", "up": diff >= 0}
+
+    trends = {
+        "total": calc_trend(curr_kpis["total"], prev_kpis["total"]),
+        "verified": calc_trend(curr_kpis["verified"], prev_kpis["verified"]),
+        "rejected": calc_trend(curr_kpis["rejected"], prev_kpis["rejected"]),
+        "pending": calc_trend(curr_kpis["pending"], prev_kpis["pending"])
+    }
+
     # 2. Daily Report Volume
     daily_reports = []
     if time_range == "24H":
-        for i in reversed(range(6)):
-            bucket_start = now - timedelta(hours=(i+1)*4)
-            bucket_end = now - timedelta(hours=i*4)
-            count = sum(1 for r in reports if bucket_start <= r.timestamp <= bucket_end)
-            daily_reports.append({"label": f"{bucket_start.hour:02d}:00", "count": count, "showLabel": i % 2 == 0})
+        # Align to local clock hours
+        local_now = now.replace(tzinfo=timezone.utc).astimezone()
+        local_now_floored = local_now.replace(minute=0, second=0, microsecond=0)
+        base_time = local_now_floored + timedelta(hours=1)
+        
+        for i in reversed(range(24)):
+            local_bucket_start = base_time - timedelta(hours=i+1)
+            local_bucket_end = base_time - timedelta(hours=i)
+            
+            utc_start = local_bucket_start.astimezone(timezone.utc).replace(tzinfo=None)
+            utc_end = local_bucket_end.astimezone(timezone.utc).replace(tzinfo=None)
+            
+            count = sum(1 for r in reports if utc_start <= r.timestamp <= utc_end)
+            daily_reports.append({"label": f"{local_bucket_start.hour:02d}:00", "count": count, "showLabel": True})
     else:
-        days = 7 if time_range == "7D" else (30 if time_range == "30D" else 90)
+        days = 7 if time_range == "7D" else (30 if time_range == "30D" else 365)
         bucket_size = 1 if time_range == "7D" else (7 if time_range == "30D" else 30)
         num_buckets = days // bucket_size
         for i in reversed(range(num_buckets)):
             bucket_start = now - timedelta(days=(i+1)*bucket_size)
             bucket_end = now - timedelta(days=i*bucket_size)
             count = sum(1 for r in reports if bucket_start <= r.timestamp <= bucket_end)
-            label = bucket_start.strftime("%a") if time_range == "7D" else f"W{num_buckets - i}" if time_range == "30D" else bucket_start.strftime("%b")
+            local_end = bucket_end.replace(tzinfo=timezone.utc).astimezone()
+            label = local_end.strftime("%a") if time_range == "7D" else f"W{num_buckets - i}" if time_range == "30D" else local_end.strftime("%b")
             daily_reports.append({"label": label, "count": count, "showLabel": True})
 
     # 3. Disaster Types
@@ -532,6 +584,7 @@ def get_analytics(
 
     return {
         "kpis": kpis,
+        "trends": trends,
         "dailyReports": daily_reports,
         "disasterTypes": disaster_types,
         "communityTrust": trust,

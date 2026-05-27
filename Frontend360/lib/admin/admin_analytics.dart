@@ -1,7 +1,8 @@
 import 'dart:math' as math;
-import 'package:disaster360/colors.dart';
 import 'package:flutter/material.dart';
+import 'package:disaster360/colors.dart';
 import 'package:disaster360/services/api_service.dart';
+import 'package:disaster360/admin/report_volume_dashboard.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  ADMIN ANALYTICS SCREEN — Disaster360
@@ -46,7 +47,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
   late Animation<Offset> _slideAnim;
 
   String _timeRange = '7D';
-  final List<String> _timeRanges = ['24H', '7D', '30D', '90D'];
+  final List<String> _timeRanges = ['24H', '7D', '30D', '1Y'];
 
   final ApiService _apiService = ApiService();
   Map<String, dynamic>? _analyticsData;
@@ -379,6 +380,13 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
   // ─── KPI Row ───────────────────────────────────────────────────────────────
   Widget _buildKpiRow(BuildContext context) {
     final kpis = Map<String, dynamic>.from(_analyticsData!['kpis']);
+    final trends = Map<String, dynamic>.from(_analyticsData!['trends'] ?? {
+      'total': {'value': '0%', 'up': true},
+      'verified': {'value': '0%', 'up': true},
+      'rejected': {'value': '0%', 'up': true},
+      'pending': {'value': '0%', 'up': true},
+    });
+
     return Column(
       children: [
         Row(
@@ -388,8 +396,8 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
               value: kpis['total'].toString(),
               valueColor: AppColors.info,
               icon: Icons.report_rounded,
-              trend: '+12%',
-              trendUp: true,
+              trend: trends['total']['value'],
+              trendUp: trends['total']['up'],
               onTap: () => _showKpiDetail(context, 'Total Reports', kpis),
             ),
             const SizedBox(width: 10),
@@ -398,8 +406,8 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
               value: kpis['verified'].toString(),
               valueColor: AppColors.success,
               icon: Icons.verified_rounded,
-              trend: '+8%',
-              trendUp: true,
+              trend: trends['verified']['value'],
+              trendUp: trends['verified']['up'],
               onTap: () => _showKpiDetail(context, 'Verified Reports', kpis),
             ),
           ],
@@ -412,8 +420,8 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
               value: kpis['rejected'].toString(),
               valueColor: AppColors.danger,
               icon: Icons.cancel_rounded,
-              trend: '-3%',
-              trendUp: false,
+              trend: trends['rejected']['value'],
+              trendUp: trends['rejected']['up'],
               onTap: () => _showKpiDetail(context, 'Rejected Reports', kpis),
             ),
             const SizedBox(width: 10),
@@ -422,8 +430,8 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
               value: kpis['pending'].toString(),
               valueColor: AppColors.warning,
               icon: Icons.pending_actions_rounded,
-              trend: '+2',
-              trendUp: false,
+              trend: trends['pending']['value'],
+              trendUp: trends['pending']['up'],
               onTap: () => _showKpiDetail(context, 'Pending Reports', kpis),
             ),
           ],
@@ -434,9 +442,23 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
 
   // ─── Report Progress ───────────────────────────────────────────────────────
   Widget _buildReportProgressCard(BuildContext context) {
-    final data = List<Map<String, dynamic>>.from(_analyticsData!['dailyReports']);
+    final fullData = List<Map<String, dynamic>>.from(_analyticsData!['dailyReports']);
+    List<Map<String, dynamic>> data = fullData;
+    if (_timeRange == '24H' && data.length > 6) {
+      data = data.sublist(data.length - 6);
+    }
     return _HoverCard(
-      onTap: () => _showReportProgressDetail(context, data),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ReportVolumeDashboardScreen(
+              data: fullData,
+              timeRange: _timeRange,
+            ),
+          ),
+        );
+      },
       child: Container(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -464,27 +486,28 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
             ),
             const SizedBox(height: 4),
             Text(
-              '${data.fold(0, (s, e) => s + ((e['count'] as num).toInt()))} reports in period',
+              '${fullData.fold(0, (s, e) => s + ((e['count'] as num).toInt()))} reports in period',
               style: const TextStyle(color: Colors.white38, fontSize: 12),
             ),
             const SizedBox(height: 20),
             SizedBox(height: 100, child: _BarChartPainterWidget(data: data)),
             const SizedBox(height: 8),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children:
-                  data
-                      .where((e) => e['showLabel'] == true)
-                      .map(
-                        (e) => Text(
-                          e['label'] as String,
-                          style: const TextStyle(
-                            color: Colors.white38,
-                            fontSize: 10,
-                          ),
-                        ),
-                      )
-                      .toList(),
+              children: data.map((e) {
+                return Expanded(
+                  child: Center(
+                    child: e['showLabel'] == true
+                        ? Text(
+                            e['label'] as String,
+                            style: const TextStyle(
+                              color: Colors.white38,
+                              fontSize: 10,
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                );
+              }).toList(),
             ),
           ],
         ),
@@ -1138,6 +1161,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
     required String title,
     required List<Widget> children,
     Widget? headerWidget,
+    double maxWidth = 480,
   }) {
     if (_BP.isWide(context)) {
       showDialog(
@@ -1147,6 +1171,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
               title: title,
               headerWidget: headerWidget,
               children: children,
+              maxWidth: maxWidth,
             ),
       );
     } else {
@@ -1306,18 +1331,60 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
     BuildContext context,
     List<Map<String, dynamic>> data,
   ) {
+    // Start scrolled all the way to the right (newest data)
+    final scrollController = ScrollController(initialScrollOffset: 10000.0);
     _showPanel(
       context: context,
       title: 'Daily Report Volume',
-      children:
-          data
-              .map(
-                (d) => _DialogRow(
-                  label: d['label'] as String,
-                  value: '${d['count']} reports',
+      maxWidth: 800,
+      children: [
+        const SizedBox(height: 10),
+        RawScrollbar(
+          controller: scrollController,
+          thumbVisibility: true,
+          trackVisibility: true,
+          interactive: true,
+          thickness: 8,
+          radius: const Radius.circular(4),
+          thumbColor: Colors.white54,
+          trackColor: Colors.white10,
+          child: SingleChildScrollView(
+            controller: scrollController,
+            scrollDirection: Axis.horizontal,
+            child: Container(
+              padding: const EdgeInsets.only(bottom: 16), // space for scrollbar
+              width: math.max(800.0, data.length * 70.0),
+              child: Column(
+                children: [
+                  SizedBox(height: 240, child: _BarChartPainterWidget(data: data)),
+                const SizedBox(height: 12),
+                Row(
+                  children: data.map((e) {
+                    return Expanded(
+                      child: Center(
+                        child: e['showLabel'] == true
+                            ? Text(
+                                e['label'] as String,
+                                style: const TextStyle(color: Colors.white38, fontSize: 10),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    );
+                  }).toList(),
                 ),
-              )
-              .toList(),
+              ],
+            ),
+          ),
+        ),
+        ),
+        const SizedBox(height: 32),
+        const Text(
+          'Detailed Breakdown',
+          style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 1.1),
+        ),
+        const SizedBox(height: 16),
+        _DetailedBreakdownList(data: data),
+      ],
     );
   }
 
@@ -1810,11 +1877,13 @@ class _ConstrainedAnalyticsDialog extends StatelessWidget {
   final String title;
   final Widget? headerWidget;
   final List<Widget> children;
+  final double maxWidth;
 
   const _ConstrainedAnalyticsDialog({
     required this.title,
     required this.children,
     this.headerWidget,
+    this.maxWidth = 480,
   });
 
   @override
@@ -1823,7 +1892,7 @@ class _ConstrainedAnalyticsDialog extends StatelessWidget {
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 48),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
+        constraints: BoxConstraints(maxWidth: maxWidth),
         child: Container(
           decoration: BoxDecoration(
             color: AppColors.bgSurface,
@@ -2295,6 +2364,56 @@ class _DialogRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _DetailedBreakdownList extends StatefulWidget {
+  final List<Map<String, dynamic>> data;
+  const _DetailedBreakdownList({required this.data});
+
+  @override
+  State<_DetailedBreakdownList> createState() => _DetailedBreakdownListState();
+}
+
+class _DetailedBreakdownListState extends State<_DetailedBreakdownList> {
+  bool _showAll = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasMore = widget.data.length > 6;
+    // Show newest (last) 6 hours if not showing all.
+    final displayData = _showAll || !hasMore
+        ? widget.data
+        : widget.data.sublist(widget.data.length - 6);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ...displayData.map(
+          (d) => _DialogRow(
+            label: d['label'] as String,
+            value: '${d['count']} reports',
+          ),
+        ),
+        if (hasMore)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Center(
+              child: TextButton(
+                onPressed: () => setState(() => _showAll = !_showAll),
+                child: Text(
+                  _showAll ? 'See Less' : 'See More',
+                  style: const TextStyle(
+                    color: AppColors.orange,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
