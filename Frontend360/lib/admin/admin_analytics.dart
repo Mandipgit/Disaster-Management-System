@@ -41,8 +41,9 @@ class AdminAnalyticsScreen extends StatefulWidget {
 }
 
 class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late AnimationController _animController;
+  late AnimationController _refreshSpinController;
   late Animation<double> _fadeAnim;
   late Animation<Offset> _slideAnim;
 
@@ -61,6 +62,10 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
       vsync: this,
       duration: const Duration(milliseconds: 520),
     );
+    _refreshSpinController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
     _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeOut);
     _slideAnim = Tween<Offset>(
       begin: const Offset(0, 0.025),
@@ -70,28 +75,37 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
   }
 
   Future<void> _fetchAnalytics() async {
+    final isFirstLoad = _analyticsData == null;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
+    _refreshSpinController.repeat();
     try {
       final response = await _apiService.get('/admin/analytics?time_range=$_timeRange');
       setState(() {
         _analyticsData = response;
         _isLoading = false;
       });
-      _animController.forward(from: 0);
+      _refreshSpinController.stop();
+      _refreshSpinController.reset();
+      if (isFirstLoad) {
+        _animController.forward(from: 0);
+      }
     } catch (e) {
       setState(() {
         _errorMessage = 'Failed to load analytics data: $e';
         _isLoading = false;
       });
+      _refreshSpinController.stop();
+      _refreshSpinController.reset();
     }
   }
 
   @override
   void dispose() {
     _animController.dispose();
+    _refreshSpinController.dispose();
     super.dispose();
   }
 
@@ -109,14 +123,14 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
     final hPad = _BP.hPad(context);
 
     Widget content;
-    if (_isLoading) {
+    if (_isLoading && _analyticsData == null) {
       content = const Center(
         child: Padding(
           padding: EdgeInsets.all(40.0),
           child: CircularProgressIndicator(color: AppColors.orange),
         ),
       );
-    } else if (_errorMessage != null) {
+    } else if (_errorMessage != null && _analyticsData == null) {
       content = Center(
         child: Padding(
           padding: const EdgeInsets.all(40.0),
@@ -127,9 +141,19 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
         ),
       );
     } else {
-      content = _BP.isWide(context)
+      final layout = _BP.isWide(context)
           ? _buildWideLayout(context)
           : _buildMobileLayout(context);
+          
+      content = AnimatedOpacity(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+        opacity: _isLoading ? 0.4 : 1.0,
+        child: IgnorePointer(
+          ignoring: _isLoading,
+          child: layout,
+        ),
+      );
     }
 
     return SafeArea(
@@ -290,30 +314,40 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
         ),
         Row(
           children: [
-            _HoverCard(
+            GestureDetector(
               onTap: _fetchAnalytics,
-              borderColor: AppColors.border,
-              hoverBorderColor: AppColors.success,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppColors.bgDark,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.refresh_rounded, color: AppColors.success, size: 15),
-                    SizedBox(width: 6),
-                    Text(
-                      'Refresh',
-                      style: TextStyle(
-                        color: AppColors.success,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
+              child: AnimatedScale(
+                scale: _isLoading ? 0.93 : 1.0,
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _isLoading ? AppColors.success.withOpacity(0.08) : AppColors.bgDark,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _isLoading ? AppColors.success.withOpacity(0.4) : AppColors.border,
                     ),
-                  ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      RotationTransition(
+                        turns: _refreshSpinController,
+                        child: const Icon(Icons.refresh_rounded, color: AppColors.success, size: 15),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _isLoading ? 'Refreshing...' : 'Refresh',
+                        style: const TextStyle(
+                          color: AppColors.success,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -352,28 +386,51 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
   }
 
   Widget _buildTimeRangeFilter(BuildContext context) {
-    return Row(
-      children:
-          _timeRanges.map((range) {
-            final isActive = _timeRange == range;
-            return _HoverFilterChip(
-              label: range,
-              isActive: isActive,
-              onTap: () => _onRangeChange(range),
-            );
-          }).toList(),
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppColors.bgDark,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children:
+            _timeRanges.map((range) {
+              final isActive = _timeRange == range;
+              return _HoverFilterChip(
+                label: range,
+                isActive: isActive,
+                onTap: () => _onRangeChange(range),
+              );
+            }).toList(),
+      ),
     );
   }
 
   Widget _buildSectionLabel(String label) {
-    return Text(
-      label,
-      style: const TextStyle(
-        color: Colors.white38,
-        fontSize: 11,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 1.5,
-      ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 4,
+          height: 14,
+          decoration: BoxDecoration(
+            color: AppColors.orange,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.2,
+          ),
+        ),
+      ],
     );
   }
 
@@ -635,7 +692,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
               final pct = maxCount > 0 ? count / maxCount : 0.0;
               return _HoverRow(
                 onTap: () => _showDisasterTypeDetail(context, type),
-                child: Padding(
+                builder: (isHovered) => Padding(
                   padding: const EdgeInsets.only(bottom: 14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -670,9 +727,9 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
                             ),
                           ),
                           const SizedBox(width: 8),
-                          const Icon(
+                          Icon(
                             Icons.chevron_right_rounded,
-                            color: Colors.white24,
+                            color: isHovered ? Colors.white70 : Colors.white24,
                             size: 16,
                           ),
                         ],
@@ -986,33 +1043,17 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
                 const SizedBox(height: 8),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(6),
-                  child: Row(
-                    children: [
-                      Flexible(
-                        flex: (upPct * 100).round(),
-                        child: TweenAnimationBuilder<double>(
-                          tween: Tween(begin: 0, end: 1),
-                          duration: const Duration(milliseconds: 900),
-                          builder:
-                              (_, v, __) => Container(
-                                height: 10,
-                                color: AppColors.success.withOpacity(v),
-                              ),
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: upPct),
+                    duration: const Duration(milliseconds: 900),
+                    curve: Curves.easeOut,
+                    builder:
+                        (_, v, __) => LinearProgressIndicator(
+                          value: v,
+                          minHeight: 10,
+                          backgroundColor: AppColors.bgDark,
+                          valueColor: const AlwaysStoppedAnimation<Color>(AppColors.success),
                         ),
-                      ),
-                      Flexible(
-                        flex: 100 - (upPct * 100).round(),
-                        child: TweenAnimationBuilder<double>(
-                          tween: Tween(begin: 0, end: 1),
-                          duration: const Duration(milliseconds: 900),
-                          builder:
-                              (_, v, __) => Container(
-                                height: 10,
-                                color: AppColors.danger.withOpacity(v),
-                              ),
-                        ),
-                      ),
-                    ],
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -1626,10 +1667,11 @@ class _HoverCardState extends State<_HoverCard> {
 
 /// Hover effect for inline rows (disaster type rows, reporter rows)
 class _HoverRow extends StatefulWidget {
-  final Widget child;
+  final Widget? child;
+  final Widget Function(bool isHovered)? builder;
   final VoidCallback onTap;
 
-  const _HoverRow({required this.child, required this.onTap});
+  const _HoverRow({this.child, this.builder, required this.onTap});
 
   @override
   State<_HoverRow> createState() => _HoverRowState();
@@ -1654,7 +1696,7 @@ class _HoverRowState extends State<_HoverRow> {
             color: _h ? Colors.white.withOpacity(0.03) : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: widget.child,
+          child: widget.builder != null ? widget.builder!(_h) : widget.child!,
         ),
       ),
     );
@@ -1748,11 +1790,13 @@ class _AnimatedKpiCardState extends State<_AnimatedKpiCard> {
                       const Spacer(),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 3,
+                          horizontal: 8,
+                          vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: (widget.trendUp
+                          color: widget.trend == "0%" 
+                              ? Colors.white.withOpacity(0.08)
+                              : (widget.trendUp
                                   ? AppColors.success
                                   : AppColors.danger)
                               .withOpacity(0.12),
@@ -1761,12 +1805,13 @@ class _AnimatedKpiCardState extends State<_AnimatedKpiCard> {
                         child: Text(
                           widget.trend,
                           style: TextStyle(
-                            color:
-                                widget.trendUp
+                            color: widget.trend == "0%"
+                                ? Colors.white54
+                                : (widget.trendUp
                                     ? AppColors.success
-                                    : AppColors.danger,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
+                                    : AppColors.danger),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
@@ -1782,8 +1827,9 @@ class _AnimatedKpiCardState extends State<_AnimatedKpiCard> {
                           duration: const Duration(milliseconds: 180),
                           style: TextStyle(
                             color: widget.valueColor,
-                            fontSize: _h ? 30 : 28,
-                            fontWeight: FontWeight.w800,
+                            fontSize: _h ? 36 : 32,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.5,
                           ),
                           child: Text(v.round().toString()),
                         ),
@@ -1832,21 +1878,18 @@ class _HoverFilterChipState extends State<_HoverFilterChip> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          margin: const EdgeInsets.only(right: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           decoration: BoxDecoration(
             color:
                 widget.isActive
-                    ? AppColors.orange
-                    : (_h ? AppColors.bgDark : AppColors.bgSurface),
+                    ? AppColors.orange.withOpacity(0.15)
+                    : (_h ? Colors.white.withOpacity(0.05) : Colors.transparent),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color:
                   widget.isActive
-                      ? AppColors.orange
-                      : (_h
-                          ? AppColors.orange.withOpacity(0.4)
-                          : AppColors.border),
+                      ? AppColors.orange.withOpacity(0.3)
+                      : Colors.transparent,
               width: 1,
             ),
           ),
@@ -2254,7 +2297,7 @@ class _ResponseTimeStat extends StatelessWidget {
             const SizedBox(height: 2),
             Text(
               label,
-              style: const TextStyle(color: Colors.white38, fontSize: 10),
+              style: const TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w600),
               textAlign: TextAlign.center,
             ),
           ],
@@ -2303,31 +2346,39 @@ class _VoteStatBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Icon(icon, color: color, size: 22),
-        const SizedBox(height: 6),
-        TweenAnimationBuilder<double>(
-          tween: Tween(begin: 0, end: double.parse(value)),
-          duration: const Duration(milliseconds: 800),
-          curve: Curves.easeOut,
-          builder:
-              (_, v, __) => Text(
-                v.round().toString(),
-                style: TextStyle(
-                  color: color,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 22),
+          const SizedBox(height: 8),
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: double.parse(value)),
+            duration: const Duration(milliseconds: 800),
+            curve: Curves.easeOut,
+            builder:
+                (_, v, __) => Text(
+                  v.round().toString(),
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
-              ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white38, fontSize: 11),
-          textAlign: TextAlign.center,
-        ),
-      ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w600),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
     );
   }
 }

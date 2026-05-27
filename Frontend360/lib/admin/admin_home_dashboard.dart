@@ -142,7 +142,18 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       cursor: SystemMouseCursors.click,
       child:
           isMobile
-              ? FloatingActionButton(
+              ? Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.orange.withOpacity(0.3),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: FloatingActionButton(
                 onPressed: () {
                   // Mobile: full screen page
                   Navigator.push(
@@ -157,8 +168,20 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                 foregroundColor: Colors.white,
                 elevation: 4,
                 shape: const CircleBorder(),
-              )
-              : FloatingActionButton.extended(
+              ),
+            )
+              : Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.orange.withOpacity(0.3),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: FloatingActionButton.extended(
                 onPressed: () {
                   // Tablet / Desktop: show as centered dialog (not full width)
                   _showReportDialog(context);
@@ -172,6 +195,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),
+            ),
     );
   }
 
@@ -1259,6 +1283,33 @@ class _SideRail extends StatelessWidget {
                 onTap: () => onNavTap(i),
               ),
             ),
+            const Spacer(),
+            const Divider(color: AppColors.border),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+              child: Row(
+                mainAxisAlignment: expanded ? MainAxisAlignment.start : MainAxisAlignment.center,
+                children: [
+                  const CircleAvatar(
+                    radius: 16,
+                    backgroundColor: AppColors.bgDark,
+                    child: Icon(Icons.person, size: 18, color: Colors.white70),
+                  ),
+                  if (expanded) ...[
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('System Console', style: TextStyle(color: AppColors.textLight, fontSize: 12, fontWeight: FontWeight.w600)),
+                          Text('Admin', style: TextStyle(color: Colors.white38, fontSize: 10)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -1293,7 +1344,7 @@ class _SideRailItemState extends State<_SideRailItem> {
     final color = widget.isActive ? AppColors.orange : Colors.white38;
     final bg =
         widget.isActive
-            ? AppColors.orange.withOpacity(0.12)
+            ? AppColors.bgDark
             : _hovered
             ? Colors.white.withOpacity(0.05)
             : Colors.transparent;
@@ -1317,7 +1368,7 @@ class _SideRailItemState extends State<_SideRailItem> {
             border:
                 widget.isActive
                     ? Border.all(
-                      color: AppColors.orange.withOpacity(0.25),
+                      color: AppColors.border,
                       width: 1,
                     )
                     : null,

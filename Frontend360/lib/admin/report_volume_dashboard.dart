@@ -764,22 +764,20 @@ class _BarsPainter extends CustomPainter {
       if (barProgress < 0.0) barProgress = 0.0;
 
       final barHeight = count > 0 ? (count / yMax) * chartRect.height * barProgress : 0.0;
-      final finalHeight = (count > 0 && barHeight < 4) ? 4.0 : barHeight;
+      final finalHeight = count > 0 ? math.max(barHeight, 4.0) : 4.0 * barProgress;
       final finalY = chartRect.bottom - finalHeight;
 
-      Color color = Colors.transparent;
+      Color color = Colors.white10;
       if (count > 0) {
-        color = isPeak ? _accent : _accent.withOpacity(0.6);
+        color = isPeak ? _accent : _accent.withOpacity(0.4);
         if (isHovered) color = _accent;
       }
 
-      if (count > 0) {
-        final rrect = RRect.fromRectAndRadius(
-          Rect.fromLTWH(x, finalY, barWidth, finalHeight),
-          const Radius.circular(4),
-        );
-        canvas.drawRRect(rrect, Paint()..color = color);
-      }
+      final rrect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(x, finalY, barWidth, finalHeight),
+        const Radius.circular(4),
+      );
+      canvas.drawRRect(rrect, Paint()..color = color);
 
       if (isHovered && count > 0) {
         final tp = TextPainter(
