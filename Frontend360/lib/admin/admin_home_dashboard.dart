@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:disaster360/providers/report_provider.dart';
 import 'package:disaster360/colors.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 // ═══════════════════════════════════════════════════════════════════════════════
 //  ADMIN HOME SCREEN — Disaster360
 //  Enhanced with:
@@ -56,11 +57,15 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     with TickerProviderStateMixin {
   int _activeNav = 0;
   int _previousNav = 0;
+  int _currentReportIndex = 0;
 
   // Page-level entrance animation controller
   late AnimationController _pageEntryCtrl;
   late Animation<double> _pageOpacity;
   late Animation<Offset> _pageSlide;
+
+  bool _isLoading = false;
+  late AnimationController _refreshSpinController;
 
   @override
   void initState() {
@@ -84,12 +89,38 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _pageEntryCtrl, curve: Curves.easeOut));
     _pageEntryCtrl.forward();
+
+    _refreshSpinController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
   }
 
   @override
   void dispose() {
     _pageEntryCtrl.dispose();
+    _refreshSpinController.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchDashboardData() async {
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
+    _refreshSpinController.repeat();
+    
+    final provider = context.read<ReportProvider>();
+    await Future.wait([
+      provider.fetchReports(),
+      provider.fetchActiveRescues(),
+      provider.fetchDuplicateReports(),
+    ]);
+
+    await Future.delayed(const Duration(milliseconds: 600));
+
+    if (mounted) {
+      setState(() => _isLoading = false);
+      _refreshSpinController.stop();
+    }
   }
 
   void _navigateTo(int index) {
@@ -303,11 +334,39 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                 const SizedBox(height: 24),
                 _buildStatCards(context),
                 const SizedBox(height: 28),
-                _buildPendingVerification(context),
-                const SizedBox(height: 28),
-                _buildRescueTeamStatus(context),
-                const SizedBox(height: 28),
-                _buildDuplicateReports(context),
+                if (_Breakpoint.isTablet(context) || _Breakpoint.isDesktop(context))
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 8,
+                        child: _buildPendingVerification(context),
+                      ),
+                      const SizedBox(width: 24),
+                      Expanded(
+                        flex: 5,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildDuplicateReports(context),
+                            const SizedBox(height: 28),
+                            _buildRescueTeamStatus(context),
+                          ],
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildPendingVerification(context),
+                      const SizedBox(height: 28),
+                      _buildDuplicateReports(context),
+                      const SizedBox(height: 28),
+                      _buildRescueTeamStatus(context),
+                    ],
+                  ),
                 const SizedBox(height: 16),
               ],
             ),
@@ -349,12 +408,42 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         ),
         Row(
           children: [
-            IconButton(
-              icon: const Icon(Icons.refresh, color: Colors.white70),
-              onPressed: () {
-                context.read<ReportProvider>().fetchReports();
-              },
-              tooltip: 'Refresh Dashboard',
+            GestureDetector(
+              onTap: _fetchDashboardData,
+              child: AnimatedScale(
+                scale: _isLoading ? 0.93 : 1.0,
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _isLoading ? AppColors.success.withOpacity(0.08) : AppColors.bgDark,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _isLoading ? AppColors.success.withOpacity(0.4) : AppColors.border,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      RotationTransition(
+                        turns: _refreshSpinController,
+                        child: const Icon(Icons.refresh_rounded, color: AppColors.success, size: 15),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _isLoading ? 'Refreshing...' : 'Refresh',
+                        style: const TextStyle(
+                          color: AppColors.success,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
             const SizedBox(width: 8),
             _HoverAnimatedWidget(
@@ -508,6 +597,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                 type: m.disasterType,
                 location: m.title,
                 description: m.description,
+                severity: m.severity,
                 upvotes: m.likes,
                 downvotes: m.dislikes,
                 date: m.createdAt,
@@ -521,152 +611,182 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
             )
             .toList();
 
-    final isWide =
-        _Breakpoint.isTablet(context) || _Breakpoint.isDesktop(context);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionLabel('PENDING VERIFICATION'),
-        const SizedBox(height: 12),
-        isWide
-            ? _twoColumnGrid(
-              reports.map((report) {
-                final adminReport = _toAdminReportData(report);
-                final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
-                final isPendingDeletion = intId != null && reportProvider.pendingDeletions.contains(intId);
-
-                if (isPendingDeletion) {
-                  return _buildInlineUndoCard(context, report, intId);
-                }
-
-                return _AnimatedPendingCard(
-                  report: report,
-                  onTap:
-                      () => Navigator.push(
-                        context,
-                        _fadeRoute(
-                          AdminReportDetailScreen(report: adminReport),
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 16,
+          runSpacing: 12,
+          children: [
+            const Text(
+              'Pending Verification',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            if (reports.isNotEmpty)
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.bgSurface,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.chevron_left, color: Colors.white54),
+                          onPressed: _currentReportIndex > 0
+                              ? () => setState(() => _currentReportIndex--)
+                              : null,
+                        ),
+                        Text(
+                          'Report ${_currentReportIndex + 1} of ${reports.length}',
+                          style: const TextStyle(color: Colors.white70, fontSize: 13),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.chevron_right, color: Colors.white54),
+                          onPressed: _currentReportIndex < reports.length - 1
+                              ? () => setState(() => _currentReportIndex++)
+                              : null,
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {},
+                    child: const Text('View Archive', style: TextStyle(color: AppColors.orange)),
+                  ),
+                ],
+              ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: reports.isEmpty
+              ? Container(
+                  key: const ValueKey('empty_pending'),
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.success.withOpacity(0.3), width: 1),
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppColors.success.withOpacity(0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.shield_rounded, color: AppColors.success, size: 32),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'All caught up!',
+                        style: TextStyle(
+                          color: AppColors.success,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                  onVerify: () async {
-                    try {
-                      final intId = int.tryParse(
-                        report.reportId.replaceAll(RegExp(r'[^0-9]'), ''),
-                      );
-                      if (intId != null)
-                        await reportProvider.verifyReport(intId);
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Report verified')),
-                        );
-                      }
-                    } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Verify failed: $e')),
-                        );
-                      }
-                    }
-                  },
-                  onReject:
-                      () => _showRejectionSheet(context, adminReport, report),
-                  onUndoReject: () async {
-                    final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
-                    if (intId != null) {
-                      await reportProvider.undoRejectReport(intId);
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Report reverted to Pending')),
-                        );
-                      }
-                    }
-                  },
-                  onDelete: () {
-                    final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
-                    if (intId != null) reportProvider.deleteReportWithInlineUndo(intId);
-                  },
-                  onReview:
-                      () => Navigator.push(
-                        context,
-                        _fadeRoute(
-                          AdminReportDetailScreen(report: adminReport),
+                      const SizedBox(height: 8),
+                      Text(
+                        'No pending reports require verification at this time.',
+                        style: TextStyle(
+                          color: AppColors.success.withOpacity(0.8),
+                          fontSize: 14,
                         ),
+                        textAlign: TextAlign.center,
                       ),
-                );
-              }).toList(),
-            )
-            : Column(
-              children:
-                  reports.map((report) {
+                    ],
+                  ),
+                )
+              : Builder(
+                  builder: (context) {
+                    // Safe index access
+                    if (_currentReportIndex >= reports.length) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) setState(() => _currentReportIndex = reports.length - 1);
+                      });
+                      return const SizedBox.shrink();
+                    }
+                    final report = reports[_currentReportIndex];
                     final adminReport = _toAdminReportData(report);
                     final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
                     final isPendingDeletion = intId != null && reportProvider.pendingDeletions.contains(intId);
 
                     if (isPendingDeletion) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _buildInlineUndoCard(context, report, intId),
-                      );
+                      return _buildInlineUndoCard(context, report, intId);
                     }
 
-                    return _AnimatedPendingCard(
+                    return _SinglePendingReportCard(
+                      key: ValueKey(report.reportId),
                       report: report,
-                      onTap:
-                          () => Navigator.push(
-                            context,
-                            _fadeRoute(
-                              AdminReportDetailScreen(report: adminReport),
-                            ),
-                          ),
+                      onTap: () => Navigator.push(
+                        context,
+                        _fadeRoute(AdminReportDetailScreen(report: adminReport)),
+                      ),
                       onVerify: () async {
                         try {
-                          final intId = int.tryParse(
-                            report.reportId.replaceAll(RegExp(r'[^0-9]'), ''),
-                          );
-                          if (intId != null)
-                            await reportProvider.verifyReport(intId);
+                          final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
+                          if (intId != null) await reportProvider.verifyReport(intId);
                           if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Report verified')),
-                            );
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report verified')));
+                            if (_currentReportIndex >= reports.length - 1 && _currentReportIndex > 0) {
+                              setState(() => _currentReportIndex--);
+                            }
                           }
                         } catch (e) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Verify failed: $e')),
-                            );
-                          }
+                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Verify failed: $e')));
                         }
                       },
-                      onReject:
-                          () =>
-                              _showRejectionSheet(context, adminReport, report),
-                      onUndoReject: () async {
-                        final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
-                        if (intId != null) {
-                          await reportProvider.undoRejectReport(intId);
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Report reverted to Pending')),
-                            );
-                          }
-                        }
+                      onReject: () {
+                         final rc = TextEditingController();
+                         showDialog(
+                           context: context,
+                           builder: (_) => _RejectionDialog(
+                             report: adminReport,
+                             reasonController: rc,
+                             onConfirmReject: (reason) async {
+                               Navigator.pop(context);
+                               final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
+                               if (intId != null) {
+                                 try {
+                                   await reportProvider.rejectReport(intId);
+                                   if (mounted) {
+                                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report rejected')));
+                                     if (_currentReportIndex >= reports.length - 1 && _currentReportIndex > 0) {
+                                       setState(() => _currentReportIndex--);
+                                     }
+                                   }
+                                 } catch (e) {
+                                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Reject failed: $e')));
+                                 }
+                               }
+                             },
+                           ),
+                         );
                       },
-                      onDelete: () {
-                        final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
-                        if (intId != null) reportProvider.deleteReportWithInlineUndo(intId);
-                      },
-                      onReview:
-                          () => Navigator.push(
-                            context,
-                            _fadeRoute(
-                              AdminReportDetailScreen(report: adminReport),
-                            ),
-                          ),
+                      onReview: () => Navigator.push(
+                        context,
+                        _fadeRoute(AdminReportDetailScreen(report: adminReport)),
+                      ),
                     );
-                  }).toList(),
-            ),
+                  },
+                ),
+        ),
       ],
     );
   }
@@ -1492,32 +1612,28 @@ class _AnimatedStatCardState extends State<_AnimatedStatCard> {
 //  ANIMATED PENDING REPORT CARD
 // ══════════════════════════════════════════════════════════════════════════════
 
-class _AnimatedPendingCard extends StatefulWidget {
+class _SinglePendingReportCard extends StatefulWidget {
   final _PendingReportData report;
   final VoidCallback onTap;
   final VoidCallback onVerify;
   final VoidCallback onReject;
-  final VoidCallback onUndoReject;
-  final VoidCallback onDelete;
   final VoidCallback onReview;
 
-  const _AnimatedPendingCard({
+  const _SinglePendingReportCard({
+    super.key,
     required this.report,
     required this.onTap,
     required this.onVerify,
     required this.onReject,
-    required this.onUndoReject,
-    required this.onDelete,
     required this.onReview,
   });
 
   @override
-  State<_AnimatedPendingCard> createState() => _AnimatedPendingCardState();
+  State<_SinglePendingReportCard> createState() => _SinglePendingReportCardState();
 }
 
-class _AnimatedPendingCardState extends State<_AnimatedPendingCard> {
+class _SinglePendingReportCardState extends State<_SinglePendingReportCard> {
   bool _hovered = false;
-  bool _isExpanded = false;
 
   String _relativeDate(String dateStr) {
     try {
@@ -1534,345 +1650,284 @@ class _AnimatedPendingCardState extends State<_AnimatedPendingCard> {
     } catch (_) { return dateStr; }
   }
 
+  Color _getTypeColor(String type) {
+    type = type.toLowerCase();
+    if (type.contains('fire')) return AppColors.orange;
+    if (type.contains('flood') || type.contains('water')) return AppColors.info;
+    if (type.contains('earthquake')) return Colors.brown;
+    if (type.contains('accident')) return AppColors.danger;
+    return AppColors.warning;
+  }
+
+  (Color, String) _getSeverityInfo(String severity) {
+    final s = severity.toLowerCase();
+    if (s == 'low' || s == '1') return (const Color(0xFF4CAF50), 'LOW');
+    if (s == 'moderate' || s == 'medium' || s == '2') return (const Color(0xFF8BC34A), 'MODERATE');
+    if (s == 'high' || s == '3') return (const Color(0xFFFFB800), 'HIGH');
+    if (s == 'severe' || s == '4') return (const Color(0xFFFF6B2B), 'SEVERE');
+    if (s == 'extreme' || s == 'critical' || s == '5') return (const Color(0xFFFF3B3B), 'CRITICAL');
+    return (AppColors.warning, severity.toUpperCase().isNotEmpty ? severity.toUpperCase() : 'UNKNOWN');
+  }
+
   @override
   Widget build(BuildContext context) {
+    final typeColor = _getTypeColor(widget.report.type);
+    final severityInfo = _getSeverityInfo(widget.report.severity);
+    final severityColor = severityInfo.$1;
+    final severityLabel = severityInfo.$2;
+    final String? heroImage = widget.report.mediaUrls.isNotEmpty 
+        ? widget.report.mediaUrls.first 
+        : null;
+
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
         onTap: widget.onTap,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final isNarrow = constraints.maxWidth < 380;
-
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.bgSurface,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color:
-                      _hovered
-                          ? AppColors.warning.withOpacity(0.45)
-                          : AppColors.border,
-                  width: 1,
-                ),
-                boxShadow:
-                    _hovered
-                        ? [
-                          BoxShadow(
-                            color: AppColors.warning.withOpacity(0.06),
-                            blurRadius: 14,
-                            spreadRadius: 2,
-                          ),
-                        ]
-                        : [],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: AppColors.bgSurface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: _hovered ? typeColor.withOpacity(0.45) : AppColors.border,
+              width: 1,
+            ),
+            boxShadow: _hovered
+                ? [
+                    BoxShadow(
+                      color: typeColor.withOpacity(0.06),
+                      blurRadius: 14,
+                      spreadRadius: 2,
+                    ),
+                  ]
+                : [],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Hero Image
+              Stack(
                 children: [
-                  isNarrow
-                      ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                '#${widget.report.reportId}',
-                                style: const TextStyle(
-                                  color: Colors.white54,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+                    child: SizedBox(
+                      height: 240,
+                      width: double.infinity,
+                      child: heroImage != null
+                          ? Image.network(
+                              heroImage,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) => Container(
+                                color: typeColor.withOpacity(0.2),
+                                child: Center(
+                                  child: Icon(Icons.image_not_supported_rounded, color: typeColor.withOpacity(0.5), size: 48),
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              _StatusBadge(status: widget.report.status),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            widget.report.submittedAgo,
-                            style: const TextStyle(
-                              color: Colors.white38,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ],
-                      )
-                      : Row(
-                        children: [
-                          Text(
-                            '#${widget.report.reportId}',
-                            style: const TextStyle(
-                              color: Colors.white54,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          _StatusBadge(status: widget.report.status),
-                          const Spacer(),
-                          Text(
-                            widget.report.submittedAgo,
-                            style: const TextStyle(
-                              color: Colors.white38,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ],
-                      ),
-                  const SizedBox(height: 10),
-                  Text(
-                    widget.report.type,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: isNarrow ? 16 : 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    widget.report.location,
-                    style: const TextStyle(color: Colors.white54, fontSize: 13),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    widget.report.description,
-                    style: const TextStyle(
-                      color: Colors.white38,
-                      fontSize: 13,
-                      height: 1.4,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.thumb_up_alt_outlined,
-                        color: AppColors.success,
-                        size: 14,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${widget.report.upvotes}',
-                        style: const TextStyle(
-                          color: AppColors.success,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Icon(
-                        Icons.thumb_down_alt_outlined,
-                        color: AppColors.danger,
-                        size: 14,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${widget.report.downvotes}',
-                        style: const TextStyle(
-                          color: AppColors.danger,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-
-                  if (widget.report.submissions.isNotEmpty)
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        const Icon(Icons.group_outlined, color: Colors.white54, size: 14),
-                        const Text(
-                          'Reported by:',
-                          style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w600),
-                        ),
-                        ...widget.report.submissions.map((sub) => Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            )
+                          : Container(
                               decoration: BoxDecoration(
-                                color: AppColors.orange.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(20),
+                                gradient: LinearGradient(
+                                  colors: [
+                                    typeColor.withOpacity(0.4),
+                                    typeColor.withOpacity(0.1),
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
                               ),
-                              child: Text(
-                                (sub['user_name'] ?? 'Citizen').toString(),
-                                style: const TextStyle(color: AppColors.orange, fontSize: 10, fontWeight: FontWeight.bold),
+                              child: Center(
+                                child: Icon(Icons.satellite_alt_rounded, color: typeColor.withOpacity(0.5), size: 48),
                               ),
-                            )),
+                            ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 16,
+                    left: 16,
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: severityColor.withOpacity(0.85),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(severityLabel, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.bgDark.withOpacity(0.7),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: Colors.white24, width: 0.5),
+                          ),
+                          child: Text(widget.report.type.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                        ),
                       ],
                     ),
-                  if (widget.report.submissions.isNotEmpty) const SizedBox(height: 14),
-                  
-                  if (widget.report.submissions.length > 1) ...[
-                    const Divider(color: Colors.white12, height: 1),
-                    InkWell(
-                      onTap: () => setState(() => _isExpanded = !_isExpanded),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              _isExpanded ? 'Hide Matched Reports' : 'Show Matched Reports (${widget.report.submissions.length - 1})',
-                              style: const TextStyle(color: AppColors.orange, fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+              // Content
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            widget.report.location,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              height: 1.2,
                             ),
-                            const SizedBox(width: 4),
-                            Icon(
-                              _isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                              color: AppColors.orange,
-                              size: 18,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            const Text(
+                              'REPORTED BY',
+                              style: TextStyle(
+                                color: Colors.white38,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              widget.report.reporter,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ],
                         ),
-                      ),
+                      ],
                     ),
-                    if (_isExpanded)
-                      ...widget.report.submissions.skip(1).map((sub) => Container(
-                            margin: const EdgeInsets.only(top: 8, bottom: 8),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.white12),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      (sub['user_name'] ?? 'Citizen').toString(),
-                                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
-                                    ),
-                                    Text(
-                                      sub['timestamp'] != null ? _relativeDate(sub['timestamp'].toString()) : 'Unknown',
-                                      style: const TextStyle(color: Colors.white38, fontSize: 11),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  (sub['description'] ?? 'No description provided').toString(),
-                                  style: const TextStyle(color: Colors.white54, fontSize: 12, height: 1.4),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          )),
-                  ],
-
-                  isNarrow
-                      ? Column(
-                        children: [
-                          if (widget.report.status.toLowerCase() != 'rejected') ...[
-                            _AnimatedActionButton(
-                              label: 'Verify',
-                              icon: Icons.check_rounded,
-                              color: AppColors.success,
-                              onTap: widget.onVerify,
-                              fullWidth: true,
-                            ),
-                            const SizedBox(height: 8),
-                            _AnimatedActionButton(
-                              label: 'Reject',
-                              icon: Icons.close_rounded,
-                              color: AppColors.orange,
-                              onTap: widget.onReject,
-                              fullWidth: true,
-                            ),
-                          ] else ...[
-                            _AnimatedActionButton(
-                              label: 'Undo Reject',
-                              icon: Icons.undo_rounded,
-                              color: AppColors.orange,
-                              onTap: widget.onUndoReject,
-                              fullWidth: true,
-                            ),
-                          ],
-                          const SizedBox(height: 8),
-                          _AnimatedActionButton(
-                            label: 'Delete',
-                            icon: Icons.delete_outline_rounded,
-                            color: AppColors.danger,
-                            onTap: widget.onDelete,
-                            fullWidth: true,
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on_outlined, color: Colors.white54, size: 16),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            '${widget.report.lat}, ${widget.report.lng}',
+                            style: const TextStyle(color: Colors.white70, fontSize: 13),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: 8),
-                          _AnimatedActionButton(
-                            label: 'Review',
-                            icon: Icons.visibility_outlined,
-                            color: Colors.white54,
-                            outlined: true,
-                            onTap: widget.onReview,
-                            fullWidth: true,
-                          ),
-                        ],
-                      )
-                      : Row(
-                        children: [
-                          if (widget.report.status.toLowerCase() != 'rejected') ...[
-                            Expanded(
-                              child: _AnimatedActionButton(
-                                label: 'Verify',
-                                icon: Icons.check_rounded,
-                                color: AppColors.success,
-                                onTap: widget.onVerify,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _AnimatedActionButton(
-                                label: 'Reject',
-                                icon: Icons.close_rounded,
-                                color: AppColors.orange,
-                                onTap: widget.onReject,
-                              ),
-                            ),
-                          ] else ...[
-                            Expanded(
-                              child: _AnimatedActionButton(
-                                label: 'Undo Reject',
-                                icon: Icons.undo_rounded,
-                                color: AppColors.orange,
-                                onTap: widget.onUndoReject,
-                              ),
-                            ),
-                          ],
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _AnimatedActionButton(
-                              label: 'Delete',
-                              icon: Icons.delete_outline_rounded,
-                              color: AppColors.danger,
-                              onTap: widget.onDelete,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _AnimatedActionButton(
-                              label: 'Review',
-                              icon: Icons.visibility_outlined,
-                              color: Colors.white54,
-                              outlined: true,
-                              onTap: widget.onReview,
-                            ),
-                          ),
-                        ],
+                        ),
+                        const Icon(Icons.access_time_rounded, color: Colors.white54, size: 16),
+                        const SizedBox(width: 4),
+                        Text(
+                          _relativeDate(widget.report.date),
+                          style: const TextStyle(color: Colors.white70, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      widget.report.description,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                        height: 1.5,
                       ),
-                ],
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 24),
+                    // Action Buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: widget.onVerify,
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              decoration: BoxDecoration(
+                                color: AppColors.orange,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 20),
+                                  SizedBox(width: 8),
+                                  Text('Verify', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: InkWell(
+                            onTap: widget.onReview,
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              decoration: BoxDecoration(
+                                color: AppColors.bgSurface,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.white24, width: 1),
+                              ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.history_rounded, color: Colors.white70, size: 20),
+                                  SizedBox(width: 8),
+                                  Text('Review', style: TextStyle(color: Colors.white70, fontSize: 15, fontWeight: FontWeight.w600)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: InkWell(
+                            onTap: widget.onReject,
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              decoration: BoxDecoration(
+                                color: AppColors.bgSurface,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.white24, width: 1),
+                              ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.highlight_off_rounded, color: AppColors.danger, size: 20),
+                                  SizedBox(width: 8),
+                                  Text('Reject', style: TextStyle(color: AppColors.danger, fontSize: 15, fontWeight: FontWeight.w600)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            );
-          },
+            ],
+          ),
         ),
       ),
     );
@@ -2946,6 +3001,7 @@ class _PendingReportData {
   final String type;
   final String location;
   final String description;
+  final String severity;
   final int upvotes;
   final int downvotes;
   final String date;
@@ -2963,6 +3019,7 @@ class _PendingReportData {
     required this.type,
     required this.location,
     required this.description,
+    required this.severity,
     required this.upvotes,
     required this.downvotes,
     required this.date,

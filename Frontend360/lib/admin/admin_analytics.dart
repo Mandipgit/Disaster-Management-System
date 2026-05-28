@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:disaster360/colors.dart';
 import 'package:disaster360/services/api_service.dart';
 import 'package:disaster360/admin/report_volume_dashboard.dart';
+import 'package:disaster360/admin/verification_rate_dashboard.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  ADMIN ANALYTICS SCREEN — Disaster360
@@ -584,80 +585,118 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
     final pendingPct = total > 0 ? (pending / total * 100).round() : 0;
 
     return _HoverCard(
-      onTap:
-          () => _showVerificationDetail(
-            context,
-            verifiedPct,
-            rejectedPct,
-            pendingPct,
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => VerificationRateDashboardScreen(
+              totalReports: total.toInt(),
+              verifiedCount: verified.toInt(),
+              rejectedCount: rejected.toInt(),
+              pendingCount: pending.toInt(),
+              timeRange: _timeRange,
+            ),
           ),
+        );
+      },
       child: Container(
         padding: const EdgeInsets.all(16),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: 110,
-              height: 110,
-              child: CustomPaint(
-                painter: _DonutChartPainter(
-                  segments: [
-                    _DonutSegment(AppColors.success, verified),
-                    _DonutSegment(AppColors.danger, rejected),
-                    _DonutSegment(AppColors.warning, pending),
-                    _DonutSegment(
-                      AppColors.bgDark,
-                      math.max(0, total - verified - rejected - pending),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Verification Rate',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
                     ),
-                  ],
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '$verifiedPct%',
-                        style: const TextStyle(
-                          color: AppColors.success,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
+                const Icon(
+                  Icons.open_in_full_rounded,
+                  color: Colors.white38,
+                  size: 14,
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${total.toInt()} reports in period',
+              style: const TextStyle(color: Colors.white38, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                SizedBox(
+                  width: 110,
+                  height: 110,
+                  child: CustomPaint(
+                    painter: _DonutChartPainter(
+                      segments: [
+                        _DonutSegment(AppColors.success, verified),
+                        _DonutSegment(AppColors.danger, rejected),
+                        _DonutSegment(AppColors.warning, pending),
+                        _DonutSegment(
+                          AppColors.bgDark,
+                          math.max(0, total - verified - rejected - pending),
                         ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '$verifiedPct%',
+                            style: const TextStyle(
+                              color: AppColors.success,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const Text(
+                            'verified',
+                            style: TextStyle(color: Colors.white38, fontSize: 10),
+                          ),
+                        ],
                       ),
-                      const Text(
-                        'verified',
-                        style: TextStyle(color: Colors.white38, fontSize: 10),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 20),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _DonutLegendRow(
+                        color: AppColors.success,
+                        label: 'Verified',
+                        value: '$verifiedPct%',
+                        count: (kpis['verified'] as num).toInt(),
+                      ),
+                      const SizedBox(height: 10),
+                      _DonutLegendRow(
+                        color: AppColors.danger,
+                        label: 'Rejected',
+                        value: '$rejectedPct%',
+                        count: (kpis['rejected'] as num).toInt(),
+                      ),
+                      const SizedBox(height: 10),
+                      _DonutLegendRow(
+                        color: AppColors.warning,
+                        label: 'Pending',
+                        value: '$pendingPct%',
+                        count: (kpis['pending'] as num).toInt(),
                       ),
                     ],
                   ),
                 ),
-              ),
-            ),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _DonutLegendRow(
-                    color: AppColors.success,
-                    label: 'Verified',
-                    value: '$verifiedPct%',
-                    count: (kpis['verified'] as num).toInt(),
-                  ),
-                  const SizedBox(height: 10),
-                  _DonutLegendRow(
-                    color: AppColors.danger,
-                    label: 'Rejected',
-                    value: '$rejectedPct%',
-                    count: (kpis['rejected'] as num).toInt(),
-                  ),
-                  const SizedBox(height: 10),
-                  _DonutLegendRow(
-                    color: AppColors.warning,
-                    label: 'Pending',
-                    value: '$pendingPct%',
-                    count: (kpis['pending'] as num).toInt(),
-                  ),
-                ],
-              ),
+              ],
             ),
           ],
         ),
@@ -1435,19 +1474,19 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen>
     int rejected,
     int pending,
   ) {
-    _showPanel(
-      context: context,
-      title: 'Verification Breakdown',
-      children: [
-        _DialogRow(label: 'Verified', value: '$verified%'),
-        _DialogRow(label: 'Rejected', value: '$rejected%'),
-        _DialogRow(label: 'Pending', value: '$pending%'),
-        const SizedBox(height: 4),
-        const Text(
-          'Tap a category to drill into individual reports.',
-          style: TextStyle(color: Colors.white38, fontSize: 12),
+    final kpis = Map<String, dynamic>.from(_analyticsData!['kpis']);
+    final total = (kpis['total'] as num).toInt();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => VerificationRateDashboardScreen(
+          totalReports: total,
+          verifiedCount: (kpis['verified'] as num).toInt(),
+          rejectedCount: (kpis['rejected'] as num).toInt(),
+          pendingCount: (kpis['pending'] as num).toInt(),
+          timeRange: _timeRange,
         ),
-      ],
+      ),
     );
   }
 
