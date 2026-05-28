@@ -614,8 +614,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 16,
+          runSpacing: 12,
           children: [
             const Text(
               'Pending Verification',
@@ -626,7 +629,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               ),
             ),
             if (reports.isNotEmpty)
-              Row(
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Container(
                     decoration: BoxDecoration(
@@ -634,6 +640,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
                           icon: const Icon(Icons.chevron_left, color: Colors.white54),
@@ -654,7 +661,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                       ],
                     ),
                   ),
-                  const SizedBox(width: 16),
                   TextButton(
                     onPressed: () {},
                     child: const Text('View Archive', style: TextStyle(color: AppColors.orange)),
