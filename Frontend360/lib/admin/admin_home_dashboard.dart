@@ -64,6 +64,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   late Animation<double> _pageOpacity;
   late Animation<Offset> _pageSlide;
 
+  bool _isLoading = false;
+  late AnimationController _refreshSpinController;
+
   @override
   void initState() {
     super.initState();
@@ -86,12 +89,38 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _pageEntryCtrl, curve: Curves.easeOut));
     _pageEntryCtrl.forward();
+
+    _refreshSpinController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
   }
 
   @override
   void dispose() {
     _pageEntryCtrl.dispose();
+    _refreshSpinController.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchDashboardData() async {
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
+    _refreshSpinController.repeat();
+    
+    final provider = context.read<ReportProvider>();
+    await Future.wait([
+      provider.fetchReports(),
+      provider.fetchActiveRescues(),
+      provider.fetchDuplicateReports(),
+    ]);
+
+    await Future.delayed(const Duration(milliseconds: 600));
+
+    if (mounted) {
+      setState(() => _isLoading = false);
+      _refreshSpinController.stop();
+    }
   }
 
   void _navigateTo(int index) {
@@ -379,12 +408,42 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
         ),
         Row(
           children: [
-            IconButton(
-              icon: const Icon(Icons.refresh, color: Colors.white70),
-              onPressed: () {
-                context.read<ReportProvider>().fetchReports();
-              },
-              tooltip: 'Refresh Dashboard',
+            GestureDetector(
+              onTap: _fetchDashboardData,
+              child: AnimatedScale(
+                scale: _isLoading ? 0.93 : 1.0,
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _isLoading ? AppColors.success.withOpacity(0.08) : AppColors.bgDark,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _isLoading ? AppColors.success.withOpacity(0.4) : AppColors.border,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      RotationTransition(
+                        turns: _refreshSpinController,
+                        child: const Icon(Icons.refresh_rounded, color: AppColors.success, size: 15),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _isLoading ? 'Refreshing...' : 'Refresh',
+                        style: const TextStyle(
+                          color: AppColors.success,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
             const SizedBox(width: 8),
             _HoverAnimatedWidget(
