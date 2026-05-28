@@ -152,6 +152,7 @@ class _ReportVolumeDashboardScreenState extends State<ReportVolumeDashboardScree
   }
 
   Widget _buildTopHeader(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
     return Row(
       children: [
         IconButton(
@@ -161,7 +162,7 @@ class _ReportVolumeDashboardScreenState extends State<ReportVolumeDashboardScree
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(),
         ),
-        const SizedBox(width: 16),
+        const SizedBox(width: 12),
         Container(
           padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
@@ -171,28 +172,33 @@ class _ReportVolumeDashboardScreenState extends State<ReportVolumeDashboardScree
           child: const Icon(Icons.show_chart, color: _accent, size: 16),
         ),
         const SizedBox(width: 8),
-        Text(
-          'ReportMetrics',
-          style: GoogleFonts.outfit(
-            color: Colors.white,
-            fontSize: 15,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 0.5,
+        Flexible(
+          child: Text(
+            'ReportMetrics',
+            style: GoogleFonts.outfit(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+            ),
+            overflow: TextOverflow.ellipsis,
           ),
         ),
-        Container(
-          height: 14,
-          width: 1,
-          color: _border,
-          margin: const EdgeInsets.symmetric(horizontal: 12),
-        ),
-        Text(
-          'Analytics Console',
-          style: GoogleFonts.dmMono(
-            color: _mutedText,
-            fontSize: 12,
+        if (!isMobile) ...[
+          Container(
+            height: 14,
+            width: 1,
+            color: _border,
+            margin: const EdgeInsets.symmetric(horizontal: 12),
           ),
-        ),
+          Text(
+            'Analytics Console',
+            style: GoogleFonts.dmMono(
+              color: _mutedText,
+              fontSize: 12,
+            ),
+          ),
+        ],
         const Spacer(),
         Container(
           decoration: BoxDecoration(
@@ -206,6 +212,7 @@ class _ReportVolumeDashboardScreenState extends State<ReportVolumeDashboardScree
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   const Icon(Icons.download_outlined, size: 14, color: _mutedText),
                   const SizedBox(width: 6),
@@ -382,14 +389,17 @@ class _ReportVolumeDashboardScreenState extends State<ReportVolumeDashboardScree
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Volume by $_unitName', style: GoogleFonts.outfit(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 4),
-                  Text('Reports submitted per ${_unitName.toLowerCase()} window', style: GoogleFonts.dmMono(color: _mutedText, fontSize: 11)),
-                ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Volume by $_unitName', style: GoogleFonts.outfit(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 4),
+                    Text('Reports submitted per ${_unitName.toLowerCase()} window', style: GoogleFonts.dmMono(color: _mutedText, fontSize: 11), overflow: TextOverflow.ellipsis),
+                  ],
+                ),
               ),
+              const SizedBox(width: 12),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
@@ -397,6 +407,7 @@ class _ReportVolumeDashboardScreenState extends State<ReportVolumeDashboardScree
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(width: 6, height: 6, decoration: const BoxDecoration(color: _accent, shape: BoxShape.circle)),
                     const SizedBox(width: 6),
@@ -439,10 +450,14 @@ class _ReportVolumeDashboardScreenState extends State<ReportVolumeDashboardScree
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Detailed Breakdown',
-                style: GoogleFonts.outfit(color: _fgText, fontSize: 14, fontWeight: FontWeight.w600),
+              Flexible(
+                child: Text(
+                  'Detailed Breakdown',
+                  style: GoogleFonts.outfit(color: _fgText, fontSize: 14, fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
+              const SizedBox(width: 8),
               Text(
                 '$activeUnits active ${_unitNamePlural.toLowerCase()}',
                 style: GoogleFonts.dmMono(color: _mutedText, fontSize: 11),
@@ -520,10 +535,10 @@ class _ReportVolumeDashboardScreenState extends State<ReportVolumeDashboardScree
                 ],
               ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
             if (isPeak)
               Container(
-                margin: const EdgeInsets.only(right: 12),
+                margin: const EdgeInsets.only(right: 8),
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: _accent.withOpacity(0.15),
@@ -537,22 +552,14 @@ class _ReportVolumeDashboardScreenState extends State<ReportVolumeDashboardScree
               )
               .animate(onPlay: (controller) => controller.repeat(reverse: true))
               .scale(begin: const Offset(1, 1), end: const Offset(1.08, 1.08), duration: 1.seconds, curve: Curves.easeInOut),
-            SizedBox(
-              width: 100,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text(
-                    count.toString(),
-                    style: GoogleFonts.dmMono(color: _fgText, fontSize: 14, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    count == 1 ? 'report' : 'reports',
-                    style: GoogleFonts.outfit(color: _mutedText, fontSize: 13),
-                  ),
-                ],
-              ),
+            Text(
+              count.toString(),
+              style: GoogleFonts.dmMono(color: _fgText, fontSize: 14, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              count == 1 ? 'report' : 'reports',
+              style: GoogleFonts.outfit(color: _mutedText, fontSize: 12),
             ),
           ],
         ),
