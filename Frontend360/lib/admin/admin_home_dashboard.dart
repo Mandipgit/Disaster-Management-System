@@ -538,6 +538,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                 type: m.disasterType,
                 location: m.title,
                 description: m.description,
+                severity: m.severity,
                 upvotes: m.likes,
                 downvotes: m.dislikes,
                 date: m.createdAt,
@@ -1570,9 +1571,22 @@ class _SinglePendingReportCardState extends State<_SinglePendingReportCard> {
     return AppColors.warning;
   }
 
+  (Color, String) _getSeverityInfo(String severity) {
+    final s = severity.toLowerCase();
+    if (s == 'low' || s == '1') return (const Color(0xFF4CAF50), 'LOW');
+    if (s == 'moderate' || s == 'medium' || s == '2') return (const Color(0xFF8BC34A), 'MODERATE');
+    if (s == 'high' || s == '3') return (const Color(0xFFFFB800), 'HIGH');
+    if (s == 'severe' || s == '4') return (const Color(0xFFFF6B2B), 'SEVERE');
+    if (s == 'extreme' || s == 'critical' || s == '5') return (const Color(0xFFFF3B3B), 'CRITICAL');
+    return (AppColors.warning, severity.toUpperCase().isNotEmpty ? severity.toUpperCase() : 'UNKNOWN');
+  }
+
   @override
   Widget build(BuildContext context) {
     final typeColor = _getTypeColor(widget.report.type);
+    final severityInfo = _getSeverityInfo(widget.report.severity);
+    final severityColor = severityInfo.$1;
+    final severityLabel = severityInfo.$2;
     final String? heroImage = widget.report.mediaUrls.isNotEmpty 
         ? widget.report.mediaUrls.first 
         : null;
@@ -1650,10 +1664,10 @@ class _SinglePendingReportCardState extends State<_SinglePendingReportCard> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: AppColors.danger.withOpacity(0.85),
+                            color: severityColor.withOpacity(0.85),
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: const Text('CRITICAL', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                          child: Text(severityLabel, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                         ),
                         const SizedBox(width: 8),
                         Container(
@@ -2899,6 +2913,7 @@ class _PendingReportData {
   final String type;
   final String location;
   final String description;
+  final String severity;
   final int upvotes;
   final int downvotes;
   final String date;
@@ -2916,6 +2931,7 @@ class _PendingReportData {
     required this.type,
     required this.location,
     required this.description,
+    required this.severity,
     required this.upvotes,
     required this.downvotes,
     required this.date,
