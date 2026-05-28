@@ -688,8 +688,31 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                         }
                       },
                       onReject: () {
-                         final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
-                         if (intId != null) reportProvider.deleteReportWithInlineUndo(intId);
+                         final rc = TextEditingController();
+                         showDialog(
+                           context: context,
+                           builder: (_) => _RejectionDialog(
+                             report: adminReport,
+                             reasonController: rc,
+                             onConfirmReject: (reason) async {
+                               Navigator.pop(context);
+                               final intId = int.tryParse(report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
+                               if (intId != null) {
+                                 try {
+                                   await reportProvider.rejectReport(intId);
+                                   if (mounted) {
+                                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report rejected')));
+                                     if (_currentReportIndex >= reports.length - 1 && _currentReportIndex > 0) {
+                                       setState(() => _currentReportIndex--);
+                                     }
+                                   }
+                                 } catch (e) {
+                                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Reject failed: $e')));
+                                 }
+                               }
+                             },
+                           ),
+                         );
                       },
                       onReview: () => Navigator.push(
                         context,
