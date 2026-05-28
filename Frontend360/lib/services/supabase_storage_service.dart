@@ -53,12 +53,10 @@ class SupabaseStorageService {
 
   /// Uploads multiple files and returns their public URLs
   Future<List<String>> uploadImages(List<File> files) async {
-    List<String> urls = [];
     try {
-      for (var file in files) {
-        final url = await uploadImage(file);
-        urls.add(url);
-      }
+      final List<String> urls = await Future.wait(
+        files.map((file) => uploadImage(file)),
+      );
       return urls;
     } catch (e) {
       // In a robust implementation, if an upload fails mid-way, you might want to 

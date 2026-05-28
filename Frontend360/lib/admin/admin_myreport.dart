@@ -77,6 +77,7 @@ class _AdminReportsScreenState extends State<AdminReportsScreen>
         upvotes: m.likes,
         downvotes: m.dislikes,
         mediaUrls: m.mediaUrls,
+        submissions: m.submissions,
       );
     }).toList();
 
@@ -525,6 +526,7 @@ class _AdminReportCard extends StatefulWidget {
 class _AdminReportCardState extends State<_AdminReportCard> {
   String _cardState = 'pending';
   bool _hovered = false;
+  bool _isExpanded = false;
 
   void _onVerify() async {
     final intId = int.tryParse(
@@ -576,10 +578,37 @@ class _AdminReportCardState extends State<_AdminReportCard> {
               Navigator.pop(context);
               final intId = int.tryParse(widget.report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
               if (intId != null) {
-                context.read<ReportProvider>().rejectReportWithInlineUndo(intId);
+                context.read<ReportProvider>().rejectReport(intId);
               }
             },
           ),
+    );
+  }
+
+  void _onDelete() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.bgDark,
+        title: const Text('Confirm Delete', style: TextStyle(color: Colors.white)),
+        content: const Text('Are you sure you want to permanently delete this report?', style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              final intId = int.tryParse(widget.report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
+              if (intId != null) {
+                context.read<ReportProvider>().deleteReportAdmin(intId);
+              }
+            },
+            child: const Text('Delete', style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -660,7 +689,7 @@ class _AdminReportCardState extends State<_AdminReportCard> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${widget.report.reportId} Rejected',
+                        '${widget.report.reportId} Deleted',
                         style: const TextStyle(
                           color: AppColors.danger,
                           fontSize: 15,
@@ -684,7 +713,7 @@ class _AdminReportCardState extends State<_AdminReportCard> {
           const SizedBox(width: 8),
           TextButton(
             onPressed: () {
-              context.read<ReportProvider>().undoInlineRejection(intId);
+              context.read<ReportProvider>().undoInlineDeletion(intId);
             },
             style: TextButton.styleFrom(
               foregroundColor: Colors.white,
@@ -702,9 +731,9 @@ class _AdminReportCardState extends State<_AdminReportCard> {
   @override
   Widget build(BuildContext context) {
     final intId = int.tryParse(widget.report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
-    final isPendingRejection = intId != null && context.watch<ReportProvider>().pendingRejections.contains(intId);
+    final isPendingDeletion = intId != null && context.watch<ReportProvider>().pendingDeletions.contains(intId);
 
-    if (isPendingRejection) {
+    if (isPendingDeletion) {
       return _buildInlineUndoCard(context, intId);
     }
 
@@ -904,6 +933,92 @@ class _AdminReportCardState extends State<_AdminReportCard> {
             ),
             const SizedBox(height: 14),
 
+            if (report.submissions.isNotEmpty)
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  const Icon(Icons.group_outlined, color: Colors.white54, size: 14),
+                  const Text(
+                    'Reported by:',
+                    style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                  ...report.submissions.map((sub) => Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.orange.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          (sub['user_name'] ?? 'Citizen').toString(),
+                          style: const TextStyle(color: AppColors.orange, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      )),
+                ],
+              ),
+            if (report.submissions.isNotEmpty) const SizedBox(height: 14),
+            
+            if (report.submissions.length > 1) ...[
+              const Divider(color: Colors.white12, height: 1),
+              InkWell(
+                onTap: () => setState(() => _isExpanded = !_isExpanded),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        _isExpanded ? 'Hide Matched Reports' : 'Show Matched Reports (${report.submissions.length - 1})',
+                        style: const TextStyle(color: AppColors.orange, fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        _isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                        color: AppColors.orange,
+                        size: 18,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (_isExpanded)
+                ...report.submissions.skip(1).map((sub) => Container(
+                      margin: const EdgeInsets.only(top: 8, bottom: 8),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                (sub['user_name'] ?? 'Citizen').toString(),
+                                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                sub['timestamp'] != null ? _relativeDate(sub['timestamp'].toString()) : 'Unknown',
+                                style: const TextStyle(color: Colors.white38, fontSize: 11),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            (sub['description'] ?? 'No description provided').toString(),
+                            style: const TextStyle(color: Colors.white54, fontSize: 12, height: 1.4),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    )),
+            ],
+
             // Action buttons
             if (isPending)
               Row(
@@ -922,9 +1037,19 @@ class _AdminReportCardState extends State<_AdminReportCard> {
                     child: _CardActionButton(
                       label: 'Reject',
                       icon: Icons.close_rounded,
-                      color: AppColors.danger,
+                      color: AppColors.orange,
                       filled: true,
                       onTap: _onReject,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _CardActionButton(
+                      label: 'Delete',
+                      icon: Icons.delete_outline_rounded,
+                      color: AppColors.danger,
+                      filled: true,
+                      onTap: _onDelete,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -941,13 +1066,50 @@ class _AdminReportCardState extends State<_AdminReportCard> {
               ),
 
             if (reviewOnly)
-              _CardActionButton(
-                label: 'Review',
-                icon: Icons.remove_red_eye_outlined,
-                color: Colors.white60,
-                filled: false,
-                onTap: _onReview,
-                fullWidth: true,
+              Row(
+                children: [
+                  Expanded(
+                    child: _CardActionButton(
+                      label: 'Review',
+                      icon: Icons.remove_red_eye_outlined,
+                      color: Colors.white60,
+                      filled: false,
+                      onTap: _onReview,
+                    ),
+                  ),
+                  if (isRejected) ...[
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _CardActionButton(
+                        label: 'Undo Reject',
+                        icon: Icons.undo_rounded,
+                        color: AppColors.orange,
+                        filled: false,
+                        onTap: () async {
+                          final id = int.tryParse(widget.report.reportId.replaceAll(RegExp(r'[^0-9]'), ''));
+                          if (id != null) {
+                            await context.read<ReportProvider>().undoRejectReport(id);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Report reverted to Pending')),
+                              );
+                            }
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _CardActionButton(
+                        label: 'Delete',
+                        icon: Icons.delete_outline_rounded,
+                        color: AppColors.danger,
+                        filled: false,
+                        onTap: _onDelete,
+                      ),
+                    ),
+                  ],
+                ],
               ),
 
             if (isVerified) ...[

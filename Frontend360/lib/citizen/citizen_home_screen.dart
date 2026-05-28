@@ -1,14 +1,16 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:disaster360/providers/report_provider.dart';
 import 'package:disaster360/providers/auth_provider.dart';
 import 'package:disaster360/citizen/citizen_profile_screen.dart';
 import 'package:disaster360/citizen/citizen_my_reports.dart';
-import 'package:disaster360/citizen/citizen_risk_map_screen.dart';
+import 'package:disaster360/services/map_screen.dart';
 import 'package:disaster360/colors.dart';
 import 'package:disaster360/services/fab_add_report.dart';
 import 'package:disaster360/services/notification_alert.dart';
+import 'package:disaster360/citizen/citizen_report_detail_screen.dart';
 
 class AlertData {
   final String title;
@@ -180,7 +182,7 @@ class _CitizenHomeScreenState extends State<CitizenHomeScreen> {
         children: [
           _buildHomeTab(),
           const CitizenMyReportsScreen(),
-          const CitizenRiskMapScreen(),
+          const DisasterMapScreen(),
           const CitizenProfileScreen(),
         ],
       ),
@@ -817,11 +819,14 @@ class _ImageViewerOverlayState extends State<ImageViewerOverlay>
   late Animation<double> _fadeAnim;
   int _currentIndex = 0;
 
+  late FocusNode _focusNode;
+
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
     _pageCtrl = PageController(initialPage: widget.initialIndex);
+    _focusNode = FocusNode()..requestFocus();
 
     _fadeCtrl = AnimationController(
       vsync: this,
@@ -833,6 +838,7 @@ class _ImageViewerOverlayState extends State<ImageViewerOverlay>
 
   @override
   void dispose() {
+    _focusNode.dispose();
     _pageCtrl.dispose();
     _fadeCtrl.dispose();
     super.dispose();
@@ -848,7 +854,35 @@ class _ImageViewerOverlayState extends State<ImageViewerOverlay>
   Widget build(BuildContext context) {
     return FadeTransition(
       opacity: _fadeAnim,
-      child: Stack(
+      child: Focus(
+        focusNode: _focusNode,
+        autofocus: true,
+        onKeyEvent: (node, event) {
+          if (event is KeyDownEvent) {
+            if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+              if (_currentIndex > 0) {
+                _pageCtrl.previousPage(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                );
+              }
+              return KeyEventResult.handled;
+            } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+              if (_currentIndex < widget.mediaUrls.length - 1) {
+                _pageCtrl.nextPage(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                );
+              }
+              return KeyEventResult.handled;
+            } else if (event.logicalKey == LogicalKeyboardKey.escape) {
+              _close();
+              return KeyEventResult.handled;
+            }
+          }
+          return KeyEventResult.ignored;
+        },
+        child: Stack(
         children: [
           // Blurred + darkened background
           GestureDetector(
@@ -896,6 +930,52 @@ class _ImageViewerOverlayState extends State<ImageViewerOverlay>
               );
             },
           ),
+
+          // Next/Prev Arrows (Desktop navigation)
+          if (widget.mediaUrls.length > 1) ...[
+            if (_currentIndex > 0)
+              Positioned(
+                left: 20,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: IconButton(
+                    icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 28),
+                    onPressed: () {
+                      _pageCtrl.previousPage(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                    },
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black45,
+                      padding: const EdgeInsets.all(16),
+                    ),
+                  ),
+                ),
+              ),
+            if (_currentIndex < widget.mediaUrls.length - 1)
+              Positioned(
+                right: 20,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: IconButton(
+                    icon: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 28),
+                    onPressed: () {
+                      _pageCtrl.nextPage(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                    },
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black45,
+                      padding: const EdgeInsets.all(16),
+                    ),
+                  ),
+                ),
+              ),
+          ],
 
           // Top bar: report ID (left), counter (center), close button (right)
           Positioned(
@@ -996,8 +1076,9 @@ class _ImageViewerOverlayState extends State<ImageViewerOverlay>
             ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1086,33 +1167,45 @@ class _ReportCardWidgetState extends State<_ReportCard>
           cursor: SystemMouseCursors.click,
           onEnter: (_) => setState(() => _hovering = true),
           onExit: (_) => setState(() => _hovering = false),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            margin: const EdgeInsets.only(bottom: 14),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.bgSurface,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color:
-                    _hovering
-                        ? AppColors.orange.withOpacity(0.35)
-                        : AppColors.border,
-                width: 1,
-              ),
-              boxShadow:
-                  _hovering
-                      ? [
-                        BoxShadow(
-                          color: AppColors.orange.withOpacity(0.06),
-                          blurRadius: 14,
-                          spreadRadius: 2,
-                        ),
-                      ]
-                      : [],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => CitizenReportDetailScreen(report: widget.report),
+                  ),
+                );
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: const EdgeInsets.only(bottom: 14),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.bgSurface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color:
+                        _hovering
+                            ? AppColors.orange.withOpacity(0.35)
+                            : AppColors.border,
+                    width: 1,
+                  ),
+                  boxShadow:
+                      _hovering
+                          ? [
+                            BoxShadow(
+                              color: AppColors.orange.withOpacity(0.06),
+                              blurRadius: 14,
+                              spreadRadius: 2,
+                            ),
+                          ]
+                          : [],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // ── Top row: Status + Date ──────────────────────────
                 Row(
@@ -1295,8 +1388,10 @@ class _ReportCardWidgetState extends State<_ReportCard>
           ),
         ),
       ),
-    );
-  }
+    ),
+  ),
+);
+}
 
   Widget _buildNestedReportCard(dynamic sub, ReportModel mainReport) {
     return GestureDetector(
@@ -1433,28 +1528,39 @@ class _ReportCardWidgetState extends State<_ReportCard>
                 ),
                 const SizedBox(height: 16),
                 
-                // Nested Image 
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    height: 160,
-                    width: double.infinity,
-                    color: AppColors.bgDark,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        const Icon(Icons.image_outlined, color: Colors.white24, size: 40),
-                        Positioned(
-                          bottom: 8,
-                          child: Text(
-                            'Evidence Photo',
-                            style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 12),
+                // Nested Image
+                if (sub['media_urls'] != null && (sub['media_urls'] as List).isNotEmpty)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.network(
+                      (sub['media_urls'] as List).first.toString(),
+                      height: 160,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
+                  )
+                else
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      height: 160,
+                      width: double.infinity,
+                      color: AppColors.bgDark,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          const Icon(Icons.image_outlined, color: Colors.white24, size: 40),
+                          Positioned(
+                            bottom: 8,
+                            child: Text(
+                              'No Evidence Photo',
+                              style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 12),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
                 const SizedBox(height: 16),
 
                 Text(

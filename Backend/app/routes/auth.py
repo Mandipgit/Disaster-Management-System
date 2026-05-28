@@ -1,10 +1,15 @@
+
 from fastapi import APIRouter, Depends, HTTPException, Request
+
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+
 from sqlalchemy.orm import Session
+
 from pydantic import BaseModel, EmailStr
 import uuid
 import secrets
 from datetime import datetime, timedelta, timezone
+
 from pydantic import BaseModel, EmailStr
 
 from ..database import get_db
@@ -279,6 +284,7 @@ def get_current_user(
         )
 
     return user
+
 
 from fastapi import Request
 

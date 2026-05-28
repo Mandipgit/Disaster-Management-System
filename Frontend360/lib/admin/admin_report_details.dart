@@ -22,6 +22,7 @@ class AdminReportData {
   final int upvotes;
   final int downvotes;
   final List<String> mediaUrls;
+  final List<dynamic> submissions;
 
   const AdminReportData({
     required this.reportId,
@@ -38,6 +39,7 @@ class AdminReportData {
     required this.upvotes,
     required this.downvotes,
     required this.mediaUrls,
+    this.submissions = const [],
   });
 }
 
@@ -91,6 +93,8 @@ class _AdminReportDetailScreenState extends State<AdminReportDetailScreen>
     try {
       if (widget.report.status.toLowerCase() == 'verified') {
         _decisionState = 'verified';
+      } else if (widget.report.status.toLowerCase() == 'rejected') {
+        _decisionState = 'rejected';
       }
     } catch (_) {}
 
@@ -181,8 +185,26 @@ class _AdminReportDetailScreenState extends State<AdminReportDetailScreen>
     );
     
     if (intId != null) {
-      context.read<ReportProvider>().rejectReportWithInlineUndo(intId);
+      context.read<ReportProvider>().rejectReport(intId);
       Navigator.pop(context); // Navigate back to the dashboard immediately
+    }
+  }
+
+  void _onUndoReject() async {
+    final intId = int.tryParse(
+      widget.report.reportId.replaceAll(RegExp(r'[^0-9]'), ''),
+    );
+    if (intId != null) {
+      await context.read<ReportProvider>().undoRejectReport(intId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Report reverted to Pending')),
+        );
+        _decisionController.reverse().then((_) {
+          setState(() => _decisionState = 'pending');
+          _decisionController.forward();
+        });
+      }
     }
   }
 
@@ -947,30 +969,44 @@ class _AdminReportDetailScreenState extends State<AdminReportDetailScreen>
   }
 
   Widget _buildRejectedBanner() {
-    return Container(
+    return Column(
       key: const ValueKey('rejected'),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      decoration: BoxDecoration(
-        color: AppColors.danger.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.danger.withOpacity(0.3), width: 1),
-      ),
-      child: const Row(
-        children: [
-          Icon(Icons.cancel_rounded, color: AppColors.danger, size: 18),
-          SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'This report has been rejected.',
-              style: TextStyle(
-                color: AppColors.danger,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            color: AppColors.danger.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.danger.withOpacity(0.3), width: 1),
           ),
-        ],
-      ),
+          child: const Row(
+            children: [
+              Icon(Icons.cancel_rounded, color: AppColors.danger, size: 18),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'This report has been rejected.',
+                  style: TextStyle(
+                    color: AppColors.danger,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _ActionButton(
+          fullWidth: true,
+          label: 'Undo Rejection',
+          icon: Icons.undo_rounded,
+          color: AppColors.orange,
+          filled: false,
+          onTap: _onUndoReject,
+        ),
+      ],
     );
   }
 }
