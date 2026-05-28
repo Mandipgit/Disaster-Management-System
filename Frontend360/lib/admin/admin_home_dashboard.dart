@@ -1829,7 +1829,9 @@ class _SinglePendingReportCardState extends State<_SinglePendingReportCard> {
         ),
       ),
     );
+  }
 }
+
 // ══════════════════════════════════════════════════════════════════════════════
 //  ANIMATED ACTION BUTTON (Verify / Reject / Review)
 // ══════════════════════════════════════════════════════════════════════════════
