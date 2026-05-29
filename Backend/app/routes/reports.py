@@ -132,12 +132,7 @@ def serialize_incident(inc, current_user_id=None):
         "media_urls": [m.file_path for m in inc.media if m.file_type == "image"] if hasattr(inc, "media") and inc.media else []
     }
 
-@router.post("/")
-def create_report(
-    payload: ReportCreateRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
+def process_disaster_report(payload: ReportCreateRequest, db: Session, user_id: str | None = None):
     DISASTER_RADIUS_KM = {"flood": 15.0, "landslide": 5.0, "earthquake": 50.0, "fire": 2.0, "default": 5.0}
     TEXT_THRESHOLD = 0.75
 
@@ -188,7 +183,7 @@ def create_report(
         
         new_report = Report(
             incident_id=matched_incident.id, 
-            user_id=current_user.id, 
+            user_id=user_id, 
             description=payload.description, 
             timestamp=parsed_timestamp,
             status=matched_incident.status,
@@ -196,10 +191,11 @@ def create_report(
         )
         db.add(new_report)
         db.commit()
+        db.refresh(new_report)
 
         distance_km = nearby_distances.get(matched_incident.id, 0.0)
 
-        return {
+        return new_report, {
             "message": "Your report matched an existing incident and has been merged.",
             "merged": True,
             "report_id": matched_incident.id,
@@ -219,15 +215,16 @@ def create_report(
         db.commit()
         db.refresh(new_incident)
 
-        new_report = Report(incident_id=new_incident.id, user_id=current_user.id, description=payload.description, timestamp=parsed_timestamp)
+        new_report = Report(incident_id=new_incident.id, user_id=user_id, description=payload.description, timestamp=parsed_timestamp)
         db.add(new_report)
         db.commit()
+        db.refresh(new_report)
 
         new_embedding = ReportEmbedding(incident_id=new_incident.id, embedding_vector=embedding)
         db.add(new_embedding)
         db.commit()
 
-        return {
+        return new_report, {
             "message": "New report/incident created successfully",
             "merged": False,
             "report_id": new_incident.id,
@@ -235,6 +232,15 @@ def create_report(
             "radius_used_km": RADIUS_KM,
             "sources": 1
         }
+
+@router.post("/")
+def create_report(
+    payload: ReportCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    _, response_data = process_disaster_report(payload, db, current_user.id)
+    return response_data
 
 @router.get("/", response_model=List[dict])
 def get_reports(db: Session = Depends(get_db), current_user: User | None = Depends(get_optional_current_user)):
